@@ -2,6 +2,7 @@ PROXY *.conn-service-cn-05.allawntech.com
 PROXY *.conn-service-cn-04.allawntech.com
 PROXY *.android-context-data.googleapis.com
 PROXY *.cloud.cupronickel.goog
+PROXY *.astrill.com
 PROXY *.scone-pa.googleapis.com
 PROXY *.quake-pa.googleapis.com
 PROXY *.subscriptionsmanagement-pa.googleapis.com
