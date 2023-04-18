@@ -11,6 +11,7 @@
 +regex ^(?:[^:/?#]+\.)*userlocation\.googleapis\.com$
 +regex ^(?:[^:/?#]+\.)*connectivitycheck\.gstatic\.com$
 +regex ^(?:[^:/?#]+\.)*firebaseremoteconfig\.googleapis\.com$
++regex ^(?:[^:/?#]+\.)*play\.googleapis\.com$
 +regex ^(?:[^:/?#]+\.)*keep\.google\.com$
 +regex ^(?:[^:/?#]+\.)*google\.com\.hk$
 +regex ^(?:[^:/?#]+\.)*ip\.skk\.moe$
