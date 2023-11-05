@@ -1,0 +1,1016 @@
+port: 7890
+allow-lan: true
+mode: Rule
+log-level: debug  # 当前 tp.nty.tv189.com
+ipv6: false
+dns:
+  enable: true # set true to enable dns (default is false)
+  ipv6: false
+  listen: 0.0.0.0:53
+  enhanced-mode: fake-ip
+  default-nameserver:
+    - 94.140.14.15
+    - 94.140.14.16
+  nameserver:
+    - 94.140.14.15
+    - 94.140.14.16
+  fallback: # concurrent request with nameserver, fallback used when GEOIP country isn't CN
+    - https://9f43c82f.d.adguard-dns.com/dns-query
+    - https://family.adguard-dns.com/dns-query
+    - tls://9f43c82f.d.adguard-dns.com
+    - 94.140.14.15
+    - 94.140.14.16
+
+#星空tpp.nty.tv189.com
+#鱼块immg-tailor.11222.cn
+#歪头wsscdn.wbalf01.xiaoka.tv
+proxies:
+
+
+      
+  - {name: "🇨🇳80", server: 222.211.75.129, port: 80, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: "🇨🇳443", server: 222.211.75.129, port: 443, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: "🇨🇳8080", server: 222.211.75.129, port: 8080, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: 🇺🇸443, server: time.is, port: 443, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: cn.gpte.top, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
+  - {name: 🇺🇸808, server: time.is, port: 8080, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: tp.nty.tv189.com, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
+
+  - {name: 🪜AD, type: socks5, server: 127.0.0.1, port: 9090}
+  - {name: 🪜7890AD111, type: http, server: 192.168.31.111, port: 7890}
+  - {name: 🪜7890AD113, type: http, server: 192.168.31.113, port: 7890}
+  - {name: 🪜7890AD101, type: http, server: 192.168.31.101, port: 7890}
+  - {name: 🪜AD112, type: socks5, server: 192.168.31.112, port: 9090}
+  - {name: 🪜GO, type: http, server: 127.0.0.1, port: 8080}
+  - {name: 🪜GO1, type: http, server: 127.0.0.1, port: 8081}
+  - {name: 🪜GO2, type: http, server: 127.0.0.1, port: 8082}
+  - {name: 🪜GO3, type: http, server: 127.0.0.1, port: 8083}
+  - {name: 🪜GO4, type: http, server: 127.0.0.1, port: 4560}
+  - {name: 🪜GS111, type: socks5, server: 192.168.31.111, port: 1082}
+  - {name: 🪜GS51, type: socks5, server: 192.168.31.111, port: 9091}
+  - {name: 🪜GH111, type: http, server: 192.168.31.111, port: 8080}
+  - {name: 🪜GH111b, type: http, server: 192.168.31.111, port: 8082}
+  - {name: 🪜GS113, type: socks5, server: 192.168.31.113, port: 1082}
+  - {name: 🪜GH113, type: http, server: 192.168.31.113, port: 8080}
+
+  - { name: CN-上海1G, type: vmess, server: wifi.jeidian.xyz, port: 8888, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-四川BGP, type: vmess, server: sc.xn--wlqw1swrj04ju56d.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'CN-河南移动 ipv6', type: vmess, server: hnv6.xn--wlqw1swrj04ju56d.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-镇江BGP, type: vmess, server: zj.xn--wlqw1swrj04ju56d.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-宿迁BGP, type: vmess, server: sq.xn--wlqw1swrj04ju56d.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-四川BGP(443端口), type: vmess, server: sc.xn--wlqw1swrj04ju56d.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-河南移动(443端口)ipv6, type: vmess, server: hnv6.xn--wlqw1swrj04ju56d.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-镇江BGP(443端口), type: vmess, server: zj.xn--wlqw1swrj04ju56d.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-宿迁BGP(443端口), type: vmess, server: sq.xn--wlqw1swrj04ju56d.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'CN-安徽 500m', type: vmess, server: ah.xn--wlqw1swrj04ju56d.com, port: 8888, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-广州1G, type: vmess, server: gz.xn--wlqw1swrj04ju56d.com, port: 8888, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: CN-河南移动, type: vmess, server: hn.xn--wlqw1swrj04ju56d.com, port: 8888, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  #淘宝黑
+  - { name: CN-上海游戏节点, type: vmess, server: 124.220.57.75, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'TW 1G 家宽/Netflix', type: vmess, server: tw1g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'TW 1G(443端口) 家宽/Netflix', type: vmess, server: tw1g.xn--vhq70hxyat50h6wk.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'HK 5G', type: vmess, server: hk5g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'HK 5G(443端口)', type: vmess, server: hk5g.xn--vhq70hxyat50h6wk.com, port: 443, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'SG 5G', type: vmess, server: sg5g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'JP 5G', type: vmess, server: jp5g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'Kr 5G', type: vmess, server: kr5g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'GER Frankfurt 5G', type: vmess, server: ger.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广日隧道-春川 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 32460, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广港隧道-香港 A 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 27506, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广港隧道-香港 B 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 21949, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广港隧道-台湾 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 15757, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广新隧道-新加坡 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 19446, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广日隧道-日本 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 19700, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '广日隧道-首尔 5x', type: vmess, server: sd1.xn--wlqw1swrj04ju56d.com, port: 40396, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽德隧道-土耳其 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 40312, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽德隧道-法兰克福 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 32036, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽德隧道-迪拜 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 37442, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽德隧道-英国 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 10501, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽德隧道-乌克兰 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 16389, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: '辽日隧道-美国阿什本 5x', type: vmess, server: sd2.xn--wlqw1swrj04ju56d.com, port: 15261, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: Singapore4G/Netflix, type: vmess, server: sg4g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: JP500m/Netflix, type: vmess, server: jp500m.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'JP 4G/Netflix', type: vmess, server: jp4g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'UK 4G/Netflix', type: vmess, server: uk4g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'US Phoenix 4G/Netflix', type: vmess, server: us4g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'US Ashburn 4G/Netflix', type: vmess, server: us4g2.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'Korea 500m/Netflix', type: vmess, server: kr500m.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'Korea Chunchuan 4G/Netflix', type: vmess, server: kr4g.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+  - { name: 'Korea Seoul  4G/Netflix', type: vmess, server: kr4g2.xn--vhq70hxyat50h6wk.com, port: 80, uuid: c3f6d1c8-1eda-4823-8653-f49e57286873, alterId: 0, cipher: auto, udp: true, network: ws, ws-opts: { path: /, headers: { Host: tp.nty.tv189.com } }, ws-path: /, ws-headers: { Host: tp.nty.tv189.com } }
+
+
+proxy-providers:
+
+ 
+  GLaDOS:
+    type: http
+    path: ./proxy_provider/GLaDOS2.yaml
+    url: "https://ghproxy.com/https://raw.githubusercontent.com/huangbinyu1987/HelloWorld/main/clash/office-gcore.yaml"
+    interval: 86400
+#    filter: (?i)^(?!.*(?:cn|美国_3|美国_15)).*(us|vmess|sg|kr|ca|jp|fr)
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 86400
+      filter: "^(?:.*,){0,4}[^,]*$"
+
+  v2rayse50:
+    type: http
+    path: ./proxy_provider/v2rayse50.yaml
+    url: "https://ghproxy.com/https://raw.githubusercontent.com/Rokate/Proxy-Sub/main/clash/clash_trojan.yml"
+#    url: "https://ghproxy.com/https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/changfengoss.yaml"
+    interval: 86400
+    filter: (?i)^(?!.*(?:cn|🇨🇳|China|中国)).*$
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 86400
+      filter: "^(?:.*,){0,4}[^,]*$"
+
+  yb1:
+    type: http
+    path: ./proxy_provider/yb1.yaml
+    url: "https://ghproxy.com/https://raw.githubusercontent.com/imyaoxp/x.sub/main/trials_providers/JP.yaml"
+    interval: 86400
+    filter: (?i)^(?!.*(?:cn|🇨🇳|China|中国)).*$
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 86400
+      filter: "^(?:.*,){0,4}[^,]*$"
+
+  ye2:
+    type: http
+    path: ./proxy_provider/ye2.yaml
+    url: "https://ghproxy.com/https://raw.githubusercontent.com/bingoYB/node_processing/main/dist/clashMerge.yaml"
+    interval: 86400
+    filter: (?i)^(?!.*(?:cn|🇨🇳|China|中国)).*$
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 86400
+      filter: "^(?:.*,){0,4}[^,]*$"
+
+  ye3:
+    type: http
+    path: ./proxy_provider/ye3.yaml
+    url: "https://raw.gitmirror.com/ripaojiedian/freenode/main/clash"
+    interval: 86400
+    filter: (?i)^(?!.*(?:cn|🇨🇳|China|中国)).*$
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 86400
+      filter: "^(?:.*,){0,4}[^,]*$"
+#https://raw.githubusercontent.com/itxve/fetch-clash-node/main/node/NodeFree.yaml
+#https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/EternityAir.yml
+#https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.yml
+#https://raw.githubusercontent.com/peasoft/NoMoreWalls/main/snippets/nodes_JP.yml
+#https://raw.githubusercontent.com/peasoft/NoMoreWalls/main/snippets/nodes.yml      
+#https://raw.githubusercontent.com/zhangkaiitugithub/passcro/main/speednodes.yaml      
+#https://raw.githubusercontent.com/youkai0100/youkai/main/sub/sub_merge_clash.yaml      
+#https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/jiang.yaml
+#https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/cfmem.yaml
+#https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/combine.yaml
+#50https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/changfengoss.yaml
+#https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/ssr.yaml
+#https://raw.githubusercontent.com/rxsweet/proxies/main/sub/mining.yaml
+#模板https://github.com/gffice/runproxypool123/blob/main/docs/clash/config
+#https://raw.githubusercontent.com/gffice/runproxypool123/main/docs/clash/proxies
+#https://gffice.github.io/runproxypool123/clash/proxies
+#https://ghproxy.com/https://raw.githubusercontent.com/freenodes/freenodes/main/clash_speed.yaml
+#https://raw.gitmirror.com/ripaojiedian/freenode/main/clash
+#https://raw.githubusercontent.com/maplelgj/TV/main/clash.yaml
+#https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription3.yaml
+#50https://raw.githubusercontent.com/lao4j/proxyRepository/main/clash/clash.yaml
+#50https://raw.githubusercontent.com/ronghuaxueleng/get_v2/main/pub/changfengoss.yaml
+#50https://raw.githubusercontent.com/Psinary/FQAction/main/v2rayse_new.yaml
+#https://tt.vg/GxgSi
+#https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/clash/mix.yml
+#https://github.com/snakem982/proxypool/blob/main/nodelist.txt
+#https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml
+
+proxy-groups:
+
+  - name: 🚀 节点选择
+    type: select
+    use:
+      - v2rayse50
+    proxies:
+      - 🪜AD
+      - 🪜GH111
+      - 🪜GS51
+      - 海选
+      - 🇨🇳443
+      - 甄选
+      - ♻️ 自动选择
+      - ♻️节点选择
+      - DIRECT
+      - 🪜GO4
+      - 木瓜云
+      - ♻️se50
+      - ♻️se48
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+      - 🚀se50
+      - 🚀ye2
+      - 🚀ye3
+      - 🚀yb1
+      - 🪜7890AD111
+      - 🪜7890AD113
+      - 🪜7890AD101
+      - 🪜GS111
+      - 🪜GS113
+      - 🪜GH111
+      - 🪜GH113
+      - 🪜GO
+      - 🪜GO1
+      - 🪜GO2
+      - 🪜GO3
+      - 🪜AD112
+      - 🇨🇳80
+      - 🇨🇳443
+      - 🇨🇳8080
+      - 🇺🇸443
+      - REJECT
+  - name: 🐟🐟
+    type: select
+    proxies:
+      - 😵海
+      - 海选
+      - DIRECT
+      - ♻️ 自动选择
+      - 🪜GO4
+      - 🪜GH111
+      - 🪜GS51
+      - 木瓜云
+      - 🐟🐟🐟
+      - ♻️se50
+      - ♻️se48
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+      - 🚀se50
+      - 🚀ye2
+      - 🚀ye3
+      - 🚀yb1
+      - 🇺🇸443
+      - 🇺🇸8080
+      - 🪜7890AD111
+      - 🪜7890AD113
+      - 🪜7890AD101
+      - 🪜GS111
+      - 🪜GS113
+      - 🪜GH111
+      - 🪜GH113
+      - 🪜GO
+      - 🪜GO1
+      - 🪜GO2
+      - 🪜GO3
+      - 🪜AD
+      - 🪜AD112
+      - ♻️se50
+      - ♻️se48
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+  - name: 🎯 全球直连
+    type: select
+    proxies:
+      - 🇨🇳443
+      - 😵甄
+      - 甄选
+      - 木瓜云
+      - DIRECT
+      - 🚀 节点选择
+      - ♻️ 自动选择 
+      - 🇨🇳80
+      - 🇨🇳8080
+      - 🇺🇸443
+  - name: 🎯 前置
+    type: select
+    proxies:
+      - 🎯 全球直连
+      - 🇨🇳443
+      - 甄选
+      - DIRECT
+      - 🚀 节点选择
+      - ♻️ 自动选择 
+      - 🇨🇳80
+      - 🇨🇳8080
+      - 🇺🇸443
+#ai|订阅
+  - name: 🇺🇸8080
+    type: "select"
+    url: "http://www.gstatic.cn/generate_204"
+    interval: 86400
+    proxies:
+      - 🚀 节点选择
+      - 🇺🇸808
+      - 🪜AD
+      - 🪜GH111
+      - DIRECT
+
+
+  - { name: 木瓜云, type: select, proxies: [甄选, 海选, 🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点, 'TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'] }
+  - { name: 甄选, type: select, proxies: [🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+  - { name: 海选, type: select, proxies: ['TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+  - { name: 😵甄, type: url-test, proxies: [🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+  - { name: 😵海, type: url-test, proxies: ['TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+
+  - name: 🐟🐟🐟
+    type: select
+    proxies:
+      - 🪜AD
+      - ♻️ 自动选择
+      - DIRECT
+
+      - 🇺🇸443
+      - 🇺🇸8080
+      - 木瓜云
+      - 🚀se50
+      - 🚀ye2
+      - 🚀ye3
+      - 🚀yb1
+      - 🪜7890AD111
+      - 🪜7890AD113
+      - 🪜7890AD101
+      - 🪜GS111
+      - 🪜GS113
+      - 🪜GH111
+      - 🪜GH113
+      - 🪜GO
+      - 🪜GO1
+      - 🪜GO2
+      - 🪜GO3
+      - 🪜AD112
+      - ♻️se50
+      - ♻️se48
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+  - name: ♻️se50
+    type: url-test
+    url: https://google.com/maps/timeline
+    interval: 86400
+    tolerance: 1000
+    use:
+      - v2rayse50
+    proxies:
+
+  - name: ♻️se48
+    type: url-test
+    url: https://google.com/maps/timeline
+    interval: 86400
+    tolerance: 1000
+    use:
+      - GLaDOS
+    proxies:
+
+  - name: ♻️yb1
+    type: url-test
+    url: https://google.com/maps/timeline
+    interval: 86400
+    tolerance: 1000
+    use:
+      - yb1
+    proxies:
+
+  - name: ♻️ye3
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 86400
+    tolerance: 1000
+    use:
+      - ye3
+    proxies:
+
+  - name: ♻️ye2
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 86400
+    tolerance: 1000
+    use:
+      - ye2
+    proxies:
+
+  - name: ♻️节点选择
+    type: relay
+    proxies:
+      - 🪜AD
+      - ♻️se50
+      - 🇨🇳443
+  - name: 🚀ye3
+    type: select
+    use:
+      - ye3
+    proxies:
+
+  - name: 🚀ye2
+    type: select
+    use:
+      - ye2
+    proxies:
+
+  - name: 🚀se50
+    type: select
+    use:
+      - v2rayse50
+    proxies:
+
+  - name: 🚀yb1
+    type: select
+    use:
+      - yb1
+    proxies:
+
+  - name: ♻️ 自动选择
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 86400
+    tolerance: 1000
+    proxies:
+      - ♻️se50
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+  - name: 🌍 国内媒体
+    type: select
+    proxies:
+      - 🎯 全球直连
+      - REJECT
+      - 🚀 节点选择
+  - name: 🌍 国外媒体
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - REJECT
+      - ♻️ 自动选择
+      - 🎯 全球直连
+      - ♻️se50
+      - ♻️yb1
+      - ♻️ye2
+      - ♻️ye3
+
+  - name: 📲 电报信息
+    type: select
+    proxies:
+      - 🪜AD
+      - 🚀 节点选择
+      - REJECT
+      - 🎯 全球直连
+      - 🪜GO
+      - 🪜GO1
+      - 🪜GO2
+      - 🪜GO3
+      - 🪜AD112
+
+  - name: Ⓜ️ 微软服务
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - 🎯 全球直连
+
+  - name: 🍎 苹果服务
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - 🎯 全球直连
+      - 🪜GH111
+
+  - name: 🛑 全球拦截
+    type: select
+    proxies:
+      - REJECT
+      - DIRECT
+  - name: 🍃 应用净化
+    type: select
+    proxies:
+      - REJECT
+      - DIRECT
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - 🎯 全球直连
+      - ♻️ 自动选择
+      - 🪜GH111
+      - 🪜GS111
+      - 🪜GH113
+      - 🪜GS113
+      - 🪜GO
+      - 🪜GO1
+      - 🪜GO2
+      - 🪜GO3
+      - 🪜AD
+      - 🪜AD112
+      - ♻️se50
+
+#    type: relay
+rule-providers:
+  Advertising:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Advertising.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising.yaml
+    interval: 86400   
+  Advertising_Classical:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Advertising_Classical.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising_Classical.yaml
+    interval: 86400    
+  Apple:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Apple.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/Apple.yaml
+    interval: 86400    
+  AppleProxy:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/AppleProxy.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleProxy/AppleProxy.yaml
+    interval: 86400    
+  Appletun:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Appletun.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/VirgilClyne/iRingo/main/RuleSet/iCloud.PrivateRelay.yaml
+    interval: 86400   
+  BanAD:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/BanAD.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/BanAD.yaml
+    interval: 86400    
+  BanAD1:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/BanEasyList.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/BanEasyList.yaml
+    interval: 86400    
+  BanAD2:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/BanEasyListChina.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/BanEasyListChina.yaml
+    interval: 86400    
+  BanAD3:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/BanEasyPrivacy.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/BanEasyPrivacy.yaml
+    interval: 86400  
+  BanAD4:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/BanProgramAD.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/BanProgramAD.yaml
+    interval: 86400    
+  Bing:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Bing.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/0577ebd31eaed03b18ee0fb97ab81e67387f359f/rule/Clash/Bing/Bing.yaml
+    interval: 86400    
+  ChinaCompanyIp:
+    type: http
+    behavior: ipcidr
+    path: "./etc/openclash/rule_provider/ChinaCompanyIp.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ChinaCompanyIp.yaml
+    interval: 86400    
+  ChinaDomain:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ChinaDomain.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ChinaDomain.yaml
+    interval: 86400    
+  ChinaIP:
+    type: http
+    behavior: ipcidr
+    path: "./etc/openclash/rule_provider/ChinaIP.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ChinaIp.yaml
+    interval: 86400   
+#  ChinaIpV6:
+#    type: http
+#    behavior: ipcidr
+ #   path: "./etc/openclash/rule_provider/ChinaIpV6.yaml"
+#    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ChinaIpV6.yaml
+ #   interval: 86400   
+  ChinaMedia:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ChinaMedia.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ChinaMedia.yaml
+    interval: 86400   
+  ChinaMedia1:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ChinaMedia1.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/clash1step/rule-provider/master/%E5%AA%92%E4%BD%93%E6%9C%8D%E5%8A%A1/Chinesemedia.list
+  Download:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Download.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Download.yaml
+    interval: 86400   
+  iCloudPrivateRelay:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/iCloudPrivateRelay.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iCloudPrivateRelay/iCloudPrivateRelay.yaml
+    interval: 86400   
+  LocalAreaNetwork:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/LocalAreaNetwork.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/LocalAreaNetwork.yaml
+    interval: 86400   
+  ProxyGFWlist:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ProxyGFWlist.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ProxyGFWlist.yaml
+    interval: 86400   
+  ProxyLite:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ProxyLite.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ProxyLite.yaml
+    interval: 86400   
+  ProxyMedia:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/ProxyMedia.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/ProxyMedia.yaml
+    interval: 86400   
+  UnBan:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/UnBan.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/UnBan.yaml
+    interval: 86400   
+  OneDrive:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Microsoft.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/OneDrive.yaml
+    interval: 86400   
+  Microsoft:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Microsoft.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Microsoft/Microsoft.yaml
+    interval: 86400   
+  OpenAi:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/OpenAi.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/OpenAi.yaml
+    interval: 86400   
+  OpenAi2:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/OpenAi2.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.yaml
+    interval: 86400       
+        
+  GoogleFCM:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/GoogleFCM.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/GoogleFCM.yaml
+    interval: 86400   
+  GoogleCN:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/GoogleCN.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/GoogleCN.yaml
+    interval: 86400   
+  Telegram:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/Telegram.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Providers/Ruleset/Telegram.yaml
+    interval: 86400   
+  WeChat:
+    type: http
+    behavior: classical
+    path: "./etc/openclash/rule_provider/WeChat.yaml"
+    url: https://ghproxy.com/https://raw.githubusercontent.com/deezertidal/QuantumultX-Rewrite/646d8913c396150665909f35ad0c9636ca6dfba9/rule/WeChat.rule
+    interval: 86400 
+
+rules:
+#  https://github.com/blackmatrix7/ios_rule_script
+#  - RULE-SET,reject,🛑 全球拦截
+#  - RULE-SET,icloud,DIRECT
+#  - RULE-SET,apple,DIRECT
+#  - RULE-SET,google,DIRECT
+#  - RULE-SET,proxy,PROXY
+#  - RULE-SET,direct,DIRECT
+#  - RULE-SET,lancidr,DIRECT
+#  - RULE-SET,cncidr,DIRECT
+#https://github.com/b1060t/clash-config-regenerator/blob/master/config_sample.yml
+# 本地/局域网地址
+# 参考：https://en.wikipedia.org/wiki/Reserved_IP_addresses
+# ACL4SSR标志 如没有，代表不是用ACL4SSR规则
+# 本地/局域网地址129ipad181redmin
+#  - SRC-IP-CIDR,192.168.31.129/32,🌍 国内媒体
+#  - SRC-IP-CIDR,192.168.31.181/32,🌍 国内媒体
+
+#openvpn
+  - IP-CIDR,222.211.75.129/32,DIRECT
+  - IP-CIDR,36.238.59.205/32,DIRECT
+  - DOMAIN-SUFFIX,t-01.v2fei.co,DIRECT
+  - DOMAIN-SUFFIX,gobe.cc,甄选
+
+#规则集 
+#🇺🇸8080
+  - IP-CIDR,192.210.226.128/32,♻️se50
+  - PROCESS-NAME,com.github.metacubex.clash.meta,🐟🐟
+  - DOMAIN-SUFFIX,gpte.top,📲 电报信息
+
+#adguard
+  - IP-CIDR,188.214.106.10/32,🐟🐟
+  - IP-CIDR,91.245.254.30/32,🐟🐟
+  - IP-CIDR,45.12.221.50/32,🐟🐟
+  - IP-CIDR,79.110.55.50/32,🐟🐟
+  - IP-CIDR,143.244.45.3/32,🐟🐟
+  - DOMAIN-KEYWORD,glados,🇺🇸8080
+  - DOMAIN-SUFFIX,gladns.com,🇺🇸8080
+  - DOMAIN-SUFFIX,glados-config.net,🇺🇸8080
+  - DOMAIN-SUFFIX,moss.network,🇺🇸8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
+  - IP-CIDR,140.99.66.125/32,🎯 全球直连
+  - IP-CIDR,107.148.192.151/32,🎯 全球直连
+  - IP-CIDR,140.99.66.125/32,🎯 全球直连
+  - IP-CIDR,140.99.66.125/32,🎯 全球直连
+  - IP-CIDR,140.99.66.125/32,🎯 全球直连
+  - IP-CIDR,140.99.66.125/32,🎯 全球直连
+  - IP-CIDR,136.22.64.0/24,🎯 全球直连
+  - IP-CIDR,136.22.65.0/24,🎯 全球直连
+  - IP-CIDR,136.22.67.0/24,🎯 全球直连
+  - IP-CIDR,136.22.76.0/24,🎯 全球直连
+  - IP-CIDR,136.22.83.0/24,🎯 全球直连
+  - IP-CIDR,136.22.85.0/24,🎯 全球直连
+  - IP-CIDR,136.22.86.0/24,🎯 全球直连
+  - IP-CIDR,136.22.87.0/24,🎯 全球直连
+  - IP-CIDR,136.22.92.0/24,🎯 全球直连
+  - IP-CIDR,136.22.93.0/24,🎯 全球直连
+  - IP-CIDR,136.22.94.0/24,🎯 全球直连
+  - IP-CIDR,136.22.95.0/24,🎯 全球直连
+  - IP-CIDR,136.22.96.0/24,🎯 全球直连
+  - IP-CIDR,136.22.97.0/24,🎯 全球直连
+  - IP-CIDR,136.22.98.0/24,🎯 全球直连
+  - IP-CIDR,136.22.99.0/24,🎯 全球直连
+  - IP-CIDR,136.22.100.0/24,🎯 全球直连
+  - IP-CIDR,136.22.101.0/24,🎯 全球直连
+  - IP-CIDR,136.22.102.0/24,🎯 全球直连
+  - IP-CIDR,136.22.103.0/24,🎯 全球直连
+  - IP-CIDR,136.22.104.0/24,🎯 全球直连
+  - IP-CIDR,136.22.105.0/24,🎯 全球直连
+  - IP-CIDR,136.22.106.0/24,🎯 全球直连
+  - IP-CIDR,136.22.107.0/24,🎯 全球直连
+  - IP-CIDR,136.22.108.0/24,🎯 全球直连
+  - IP-CIDR,136.22.109.0/24,🎯 全球直连
+  - IP-CIDR,136.22.110.0/24,🎯 全球直连
+  - IP-CIDR,136.23.1.0/24,🎯 全球直连
+  - IP-CIDR,136.23.2.0/24,🎯 全球直连
+  - IP-CIDR,136.23.3.0/24,🎯 全球直连
+  - IP-CIDR,136.23.4.0/24,🎯 全球直连
+  - IP-CIDR,136.23.5.0/24,🎯 全球直连
+  - IP-CIDR,136.23.6.0/24,🎯 全球直连
+  - IP-CIDR,136.23.7.0/24,🎯 全球直连
+  - IP-CIDR,136.23.8.0/24,🎯 全球直连
+  - IP-CIDR,136.23.9.0/24,🎯 全球直连
+  - IP-CIDR,136.23.10.0/24,🎯 全球直连
+  - IP-CIDR,136.23.11.0/24,🎯 全球直连
+  - IP-CIDR,136.23.12.0/24,🎯 全球直连
+  - IP-CIDR,136.23.13.0/24,🎯 全球直连
+  - IP-CIDR,136.23.14.0/24,🎯 全球直连
+  - IP-CIDR,136.23.15.0/24,🎯 全球直连
+  - IP-CIDR,136.23.16.0/24,🎯 全球直连
+  - IP-CIDR,136.23.17.0/24,🎯 全球直连
+  - IP-CIDR,136.23.18.0/24,🎯 全球直连
+  - IP-CIDR,136.23.19.0/24,🎯 全球直连
+  - IP-CIDR,136.23.20.0/24,🎯 全球直连
+  - IP-CIDR,136.23.21.0/24,🎯 全球直连
+  - IP-CIDR,136.23.22.0/24,🎯 全球直连
+  - IP-CIDR,136.23.23.0/24,🎯 全球直连
+  - IP-CIDR,136.23.24.0/24,🎯 全球直连
+  - IP-CIDR,136.23.25.0/24,🎯 全球直连
+  - IP-CIDR,136.23.26.0/24,🎯 全球直连
+  - IP-CIDR,136.23.27.0/24,🎯 全球直连
+  - IP-CIDR,136.23.28.0/24,🎯 全球直连
+  - IP-CIDR,136.23.29.0/24,🎯 全球直连
+  - IP-CIDR,136.23.30.0/24,🎯 全球直连
+  - IP-CIDR,136.23.31.0/24,🎯 全球直连
+  - IP-CIDR,136.23.32.0/24,🎯 全球直连
+  - IP-CIDR,136.23.33.0/24,🎯 全球直连
+  - IP-CIDR,136.23.34.0/24,🎯 全球直连
+  - IP-CIDR,136.23.35.0/24,🎯 全球直连
+  - IP-CIDR,209.107.176.0/24,🎯 全球直连
+  - IP-CIDR,209.107.177.0/24,🎯 全球直连
+  - IP-CIDR,209.107.178.0/24,🎯 全球直连
+  - IP-CIDR,209.107.179.0/24,🎯 全球直连
+  - IP-CIDR,209.107.180.0/24,🎯 全球直连
+  - IP-CIDR,209.107.181.0/24,🎯 全球直连
+  - IP-CIDR,209.107.182.0/24,🎯 全球直连
+  - IP-CIDR,209.107.183.0/24,🎯 全球直连
+  - IP-CIDR,209.107.184.0/24,🎯 全球直连
+  - IP-CIDR,209.107.185.0/24,🎯 全球直连
+  - IP-CIDR,209.107.186.0/24,🎯 全球直连
+  - IP-CIDR,209.107.187.0/24,🎯 全球直连
+  - IP-CIDR,209.107.188.0/24,🎯 全球直连
+  - IP-CIDR,209.107.189.0/24,🎯 全球直连
+  - IP-CIDR,209.107.190.0/24,🎯 全球直连
+  - IP-CIDR,209.107.191.0/24,🎯 全球直连
+
+#one.google.com
+  - IP-CIDR,209.107.188.0/24,🎯 全球直连
+  - IP-CIDR,209.107.189.0/24,🎯 全球直连
+  - IP-CIDR,209.107.190.0/24,🎯 全球直连
+  - IP-CIDR,209.107.191.0/24,🎯 全球直连
+  - IP-CIDR,209.107.188.0/24,🎯 全球直连
+  - IP-CIDR,209.107.189.0/24,🎯 全球直连
+  - IP-CIDR,209.107.190.0/24,🎯 全球直连
+  - IP-CIDR,209.107.191.0/24,🎯 全球直连
+#adguard
+  - DOMAIN-SUFFIX,api.fully-perfect-freedom.org,🐟🐟
+  - DOMAIN-SUFFIX,whoami.adguard-vpn.online,🐟🐟
+  - DOMAIN-SUFFIX,adguard.io,🐟🐟
+  - DOMAIN-KEYWORD,adguard.io,🐟🐟
+  - IP-CIDR,37.120.210.198/32,🐟🐟
+  - IP-CIDR,188.214.106.10/32,🐟🐟
+  - IP-CIDR,37.120.210.198/32,🪜GH111
+  - IP-CIDR,37.120.210.198/32,🪜GH111
+  - IP-CIDR,37.120.210.198/32,🪜GH111
+  - IP-CIDR,37.120.210.198/32,🪜GH111
+  - IP-CIDR,37.120.210.198/32,🪜GH111
+ 
+ # dns.google/adguard-dns
+  - DOMAIN,d.adguard-dns.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,dns.google,🐟🐟🐟
+  - IP-CIDR,8.8.8.8/32,🐟🐟🐟
+  - IP-CIDR,8.8.4.4/32,🐟🐟🐟
+  - DOMAIN-SUFFIX,9f43c82f.d.adguard-dns.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,c514b774.d.adguard-dns.com,🐟🐟🐟
+  - IP-CIDR,94.140.14.59/32,🐟🐟🐟
+  - IP-CIDR,94.140.14.49/32,🐟🐟🐟
+  - IP-CIDR,156.154.70.3/32,🐟🐟🐟
+  - IP-CIDR,156.154.71.3/32,🐟🐟🐟
+  - IP-CIDR,103.247.36.36/32,🐟🐟🐟
+  - IP-CIDR,103.247.37.37/32,🐟🐟🐟
+
+#Microsoft
+  - IP-CIDR,8.252.75.126/32,Ⓜ️ 微软服务
+  - IP-CIDR,67.24.197.254/32,Ⓜ️ 微软服务
+  - IP-CIDR,156.154.70.3/32,🐟🐟🐟
+  - IP-CIDR,156.154.71.3/32,🐟🐟🐟
+  - IP-CIDR,103.247.36.36/32,🐟🐟🐟
+  - IP-CIDR,103.247.37.37/32,🐟🐟🐟
+  
+  #skype
+  - PROCESS-NAME,com.skype.insiders,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,microsoft.com,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,skype.com,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,live.com,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,microsoftapp.net,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,skypeassets.com,Ⓜ️ 微软服务
+  - DOMAIN-SUFFIX,appcenter.ms,Ⓜ️ 微软服务
+
+ #adguardvpn
+  - PROCESS-NAME,com.adguard.vpn,🐟🐟
+  - DOMAIN-SUFFIX,allawpnos.com,🐟🐟
+  - DOMAIN-SUFFIX,allawntech.com,🐟🐟
+  - DOMAIN-SUFFIX,api.fully-perfect-freedom.org,🐟🐟
+  - DOMAIN-SUFFIX,api.totally-splendid-safety.net,🐟🐟
+  - DOMAIN-SUFFIX,blog.eu.playstation.com,🐟🐟
+  - DOMAIN-SUFFIX,whoami.adguard-vpn.online,🐟🐟
+  - DOMAIN-SUFFIX,dns.alidns.com,🐟🐟
+  - DOMAIN-SUFFIX,allawnos.com,🐟🐟
+
+ #AppleProxy
+  - RULE-SET,AppleProxy,🍎 苹果服务
+  - RULE-SET,iCloudPrivateRelay,🍎 苹果服务
+
+#binance
+  - PROCESS-NAME,com.binance.dev,📲 电报信息
+  - DOMAIN-SUFFIX,www.yingwangtech.net,📲 电报信息
+  - DOMAIN-SUFFIX,binance.com,📲 电报信息
+  - DOMAIN-SUFFIX,binance.info,📲 电报信息
+  - DOMAIN-SUFFIX,bntrace.com,📲 电报信息
+  - DOMAIN-SUFFIX,relay.walletconnect.com,📲 电报信息
+  - DOMAIN-SUFFIX,api.saasexch.cc,📲 电报信息
+  - DOMAIN-SUFFIX,relay.walletconnect.com,📲 电报信息
+  - DOMAIN-SUFFIX,relay.walletconnect.com,📲 电报信息
+
+#  - DOMAIN-KEYWORD,binance,📲 电报信息
+#  - DOMAIN-KEYWORD,bntrace,📲 电报信息
+#  - DOMAIN-KEYWORD,saasexch,📲 电报信息
+#  - DOMAIN-KEYWORD,yingwangtech,📲 电报信息
+#  - DOMAIN-SUFFIX,relay.walletconnect.com,📲 电报信息
+
+#tradingview
+  - DOMAIN-KEYWORD,tradingview,🐟🐟🐟
+  - DOMAIN-SUFFIX,firebaseinappmessaging.googleapis.com,📲 电报信息
+
+#ai
+  - RULE-SET,OpenAi,🇺🇸8080
+  - RULE-SET,OpenAi2,🇺🇸8080
+  - DOMAIN-SUFFIX,chatgpt.livekit.cloud,🇺🇸8080
+  - DOMAIN-SUFFIX,openai.com,🇺🇸8080
+  - RULE-SET,Bing,Ⓜ️ 微软服务    
+  - DOMAIN-SUFFIX,location.microsoft.com,🇺🇸8080
+  - DOMAIN-SUFFIX,claude.ai,🇺🇸8080
+  - DOMAIN-SUFFIX,bard.google.com,🇺🇸8080  
+  - DOMAIN-SUFFIX,ora.ai,🇺🇸8080  
+
+#perplexity ai
+  - DOMAIN-SUFFIX,sentry.io,🇺🇸8080
+  - DOMAIN-SUFFIX,gstatic.com,🇺🇸8080
+  - DOMAIN-SUFFIX,perplexity.ai,🇺🇸8080  
+  - DOMAIN-SUFFIX,revenuecat.com,🇺🇸8080
+  - DOMAIN-SUFFIX,static.cloudflareinsights.com,🇺🇸8080
+  - DOMAIN-SUFFIX,crashlytics.com,🇺🇸8080  
+  
+#区域检查
+  - DOMAIN-SUFFIX,growth-pa.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,phosphor-pa.googleapis.com,🐟🐟🐟
+
+  - DOMAIN-SUFFIX,connectivitycheck.gstatic.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,beryllium-pa.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,prod.brass.cloud.cupronickel.goog,🐟🐟🐟
+  - DOMAIN-SUFFIX,scone-pa.googleapis.com,🐟🐟🐟
+  - DOMAIN,www.google.com,🐟🐟🐟
+  - DOMAIN,www.googleapis.com,🐟🐟🐟
+  - DOMAIN,edge.microsoft.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,subscriptionsmobile-pa.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,play.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,android.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,subscriptionsmanagement-pa.googleapis.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,android.apis.google.com,🐟🐟🐟
+
+  - DOMAIN-SUFFIX,accounts.google.com,🐟🐟🐟
+  - DOMAIN-SUFFIX,gobe.cc,🇨🇳443
+
+# 阿里网盘
+  - DOMAIN-SUFFIX,api.aliyundrive.com,🎯 全球直连
+  - DOMAIN-SUFFIX,auth.aliyundrive.com,🎯 全球直连
+  - DOMAIN-SUFFIX,cn-beijing-data.aliyundrive.net,🎯 全球直连
+  - RULE-SET,Appletun,🐟🐟
+
+#myself
+  - DOMAIN-SUFFIX,jp2.downloadvip.cfd,🎯 全球直连
+  - DOMAIN-SUFFIX,bbs.binmt.cc,🎯 全球直连
+  - DOMAIN-SUFFIX,m.mf178.cn,🎯 前置
+  - DOMAIN-SUFFIX,track.bankcomm.com,🎯 前置
+#  - DOMAIN-SUFFIX,creditcardapp.bankcomm,🎯 前置
+  - DOMAIN-SUFFIX,googleapis.com,🚀 节点选择
+  - DOMAIN-SUFFIX,gvt1.com,🚀 节点选择
+#Advertising_Classical补充前置
+  - DOMAIN-SUFFIX,mzstatic.com,🍎 苹果服务
+#王者
+  - DOMAIN-SUFFIX,tools.tmga.qq.com,🎯 全球直连
+  - IP-CIDR,14.22.9.0/24,🎯 前置
+  - IP-CIDR,113.250.24.0/24,🎯 前置
+  - IP-CIDR,180.110.152.0/24,🎯 前置
+  - IP-CIDR,101.91.33.0/24,🎯 前置
+  - IP-CIDR,39.173.190.0/24,🎯 前置
+#  - IP-CIDR,39.175.114.0/24,🎯 前置
+  - IP-CIDR,111.30.183.0/24,🎯 前置
+  - IP-CIDR,111.172.208.0/24,🎯 前置
+
+#  - IP-CIDR,180.160.0.0/13,🎯 前置,no-resolve
+#  - IP-CIDR,182.254.0.0/16,🎯 前置,no-resolve
+#  - RULE-SET,Bing,🚀 节点选择
+  - RULE-SET,Microsoft,Ⓜ️ 微软服务
+  - RULE-SET,GoogleFCM,🚀 节点选择
+  - RULE-SET,GoogleCN,🚀 节点选择
+  - RULE-SET,WeChat,🎯 全球直连
+  - RULE-SET,LocalAreaNetwork,🎯 全球直连
+  - RULE-SET,ChinaMedia,🌍 国内媒体
+  - RULE-SET,ChinaMedia1,🌍 国内媒体
+  - RULE-SET,Apple,🍎 苹果服务
+  - RULE-SET,ProxyMedia,🌍 国外媒体
+  - RULE-SET,OneDrive,🎯 全球直连
+  - RULE-SET,ProxyLite,🚀 节点选择
+  - RULE-SET,Telegram,📲 电报信息
+  - RULE-SET,Advertising,🛑 全球拦截
+  - RULE-SET,Advertising_Classical,🛑 全球拦截
+  - RULE-SET,BanAD,🛑 全球拦截
+  - RULE-SET,BanAD1,🛑 全球拦截
+  - RULE-SET,BanAD2,🛑 全球拦截
+  - RULE-SET,BanAD2,🛑 全球拦截
+  - RULE-SET,BanAD4,🛑 全球拦截
+  - DOMAIN-SUFFIX,v2rayse.com,🚀 节点选择
+  - DOMAIN-SUFFIX,cff.pw,🚀 节点选择
+  - DOMAIN-SUFFIX,vpnse.org,🚀 节点选择
+  - DOMAIN-SUFFIX,cfmem.com,🚀 节点选择
+  - RULE-SET,ChinaDomain,🎯 全球直连
+  - RULE-SET,ChinaCompanyIp,🎯 全球直连,no-resolve
+  - RULE-SET,ChinaIP,🎯 全球直连
+  - GEOIP,CN,🎯 全球直连
+  - MATCH,🐟 漏网之鱼
