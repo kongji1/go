@@ -28,11 +28,11 @@ proxies:
 
 
       
-  - {name: "🇨🇳80", server: 222.211.75.129, port: 80, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
-  - {name: "🇨🇳443", server: 222.211.75.129, port: 443, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
-  - {name: "🇨🇳8080", server: 222.211.75.129, port: 8080, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
-  - {name: 🇺🇸443, server: time.is, port: 443, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: cn.gpte.top, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
-  - {name: 🇺🇸808, server: time.is, port: 8080, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: tp.nty.tv189.com, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
+  - {name: "CN80", server: 222.211.75.129, port: 80, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: "CN443", server: 222.211.75.129, port: 443, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: "CN8080", server: 222.211.75.129, port: 8080, type: vmess, uuid: 06fea4e9-beff-4f12-a1a1-71ecf4d66d95, alterId: 0, cipher: auto, tls: false, network: ws, ws-opts: {path: /, headers: {Host: tp.nty.tv189.com}}}
+  - {name: US443, server: time.is, port: 443, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: cn.gpte.top, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
+  - {name: US808, server: time.is, port: 8080, type: vmess, uuid: 297a7f73-0dfc-47f1-246f-1dcd291ec1f9, alterId: 0, cipher: auto, tls: false, servername: tp.nty.tv189.com, network: ws, ws-opts: {path: /2bbe73, headers: {Host: cn.gpte.top}}}
 
   - {name: 🪜AD, type: socks5, server: 127.0.0.1, port: 9090}
   - {name: 🪜7890AD111, type: http, server: 192.168.31.111, port: 7890}
@@ -199,7 +199,7 @@ proxy-groups:
       - 🪜GH111
       - 🪜GS51
       - 海选
-      - 🇨🇳443
+      - CN443
       - 甄选
       - ♻️ 自动选择
       - ♻️节点选择
@@ -227,10 +227,10 @@ proxy-groups:
       - 🪜GO2
       - 🪜GO3
       - 🪜AD112
-      - 🇨🇳80
-      - 🇨🇳443
-      - 🇨🇳8080
-      - 🇺🇸443
+      - CN80
+      - CN443
+      - CN8080
+      - US443
       - REJECT
   - name: 🐟🐟
     type: select
@@ -253,8 +253,8 @@ proxy-groups:
       - 🚀ye2
       - 🚀ye3
       - 🚀yb1
-      - 🇺🇸443
-      - 🇺🇸8080
+      - US443
+      - US8080
       - 🪜7890AD111
       - 🪜7890AD113
       - 🪜7890AD101
@@ -276,45 +276,45 @@ proxy-groups:
   - name: 🎯 全球直连
     type: select
     proxies:
-      - 🇨🇳443
+      - CN443
       - 😵甄
       - 甄选
       - 木瓜云
       - DIRECT
       - 🚀 节点选择
       - ♻️ 自动选择 
-      - 🇨🇳80
-      - 🇨🇳8080
-      - 🇺🇸443
+      - CN80
+      - CN8080
+      - US443
   - name: 🎯 前置
     type: select
     proxies:
       - 🎯 全球直连
-      - 🇨🇳443
+      - CN443
       - 甄选
       - DIRECT
       - 🚀 节点选择
       - ♻️ 自动选择 
-      - 🇨🇳80
-      - 🇨🇳8080
-      - 🇺🇸443
+      - CN80
+      - CN8080
+      - US443
 #ai|订阅
-  - name: 🇺🇸8080
+  - name: US8080
     type: "select"
     url: "http://www.gstatic.cn/generate_204"
     interval: 86400
     proxies:
       - 🚀 节点选择
-      - 🇺🇸808
+      - US808
       - 🪜AD
       - 🪜GH111
       - DIRECT
 
 
-  - { name: 木瓜云, type: select, proxies: [甄选, 海选, 🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点, 'TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'] }
-  - { name: 甄选, type: select, proxies: [🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+  - { name: 木瓜云, type: select, proxies: [甄选, 海选, CN443, CN80, CN8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点, 'TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'] }
+  - { name: 甄选, type: select, proxies: [CN443, CN80, CN8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
   - { name: 海选, type: select, proxies: ['TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
-  - { name: 😵甄, type: url-test, proxies: [🇨🇳443, 🇨🇳80, 🇨🇳8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
+  - { name: 😵甄, type: url-test, proxies: [CN443, CN80, CN8080, CN-上海1G, CN-四川BGP, 'CN-河南移动 ipv6', CN-镇江BGP, CN-宿迁BGP, CN-四川BGP(443端口), CN-河南移动(443端口)ipv6, CN-镇江BGP(443端口), CN-宿迁BGP(443端口), 'CN-安徽 500m', CN-广州1G, CN-河南移动, CN-上海游戏节点], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
   - { name: 😵海, type: url-test, proxies: ['TW 1G 家宽/Netflix', 'TW 1G(443端口) 家宽/Netflix', 'HK 5G', 'HK 5G(443端口)', 'SG 5G', 'JP 5G', 'Kr 5G', 'GER Frankfurt 5G', '广日隧道-春川 5x', '广港隧道-香港 A 5x', '广港隧道-香港 B 5x', '广港隧道-台湾 5x', '广新隧道-新加坡 5x', '广日隧道-日本 5x', '广日隧道-首尔 5x', '辽德隧道-土耳其 5x', '辽德隧道-法兰克福 5x', '辽德隧道-迪拜 5x', '辽德隧道-英国 5x', '辽德隧道-乌克兰 5x', '辽日隧道-美国阿什本 5x', Singapore4G/Netflix, JP500m/Netflix, 'JP 4G/Netflix', 'UK 4G/Netflix', 'US Phoenix 4G/Netflix', 'US Ashburn 4G/Netflix', 'Korea 500m/Netflix', 'Korea Chunchuan 4G/Netflix', 'Korea Seoul  4G/Netflix'], url: 'http://www.gstatic.com/generate_204', interval: 86400 }
 
   - name: 🐟🐟🐟
@@ -324,8 +324,8 @@ proxy-groups:
       - ♻️ 自动选择
       - DIRECT
 
-      - 🇺🇸443
-      - 🇺🇸8080
+      - US443
+      - US8080
       - 木瓜云
       - 🚀se50
       - 🚀ye2
@@ -398,7 +398,7 @@ proxy-groups:
     proxies:
       - 🪜AD
       - ♻️se50
-      - 🇨🇳443
+      - CN443
   - name: 🚀ye3
     type: select
     use:
@@ -725,7 +725,7 @@ rules:
   - DOMAIN-SUFFIX,gobe.cc,甄选
 
 #规则集 
-#🇺🇸8080
+#US8080
   - IP-CIDR,192.210.226.128/32,♻️se50
   - PROCESS-NAME,com.github.metacubex.clash.meta,🐟🐟
   - DOMAIN-SUFFIX,gpte.top,📲 电报信息
@@ -736,13 +736,13 @@ rules:
   - IP-CIDR,45.12.221.50/32,🐟🐟
   - IP-CIDR,79.110.55.50/32,🐟🐟
   - IP-CIDR,143.244.45.3/32,🐟🐟
-  - DOMAIN-KEYWORD,glados,🇺🇸8080
-  - DOMAIN-SUFFIX,gladns.com,🇺🇸8080
-  - DOMAIN-SUFFIX,glados-config.net,🇺🇸8080
-  - DOMAIN-SUFFIX,moss.network,🇺🇸8080
-  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
-  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
-  - DOMAIN-SUFFIX,raw.githubusercontent.com,🇺🇸8080
+  - DOMAIN-KEYWORD,glados,US8080
+  - DOMAIN-SUFFIX,gladns.com,US8080
+  - DOMAIN-SUFFIX,glados-config.net,US8080
+  - DOMAIN-SUFFIX,moss.network,US8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,US8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,US8080
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,US8080
   - IP-CIDR,140.99.66.125/32,🎯 全球直连
   - IP-CIDR,107.148.192.151/32,🎯 全球直连
   - IP-CIDR,140.99.66.125/32,🎯 全球直连
@@ -918,23 +918,23 @@ rules:
   - DOMAIN-SUFFIX,firebaseinappmessaging.googleapis.com,📲 电报信息
 
 #ai
-  - RULE-SET,OpenAi,🇺🇸8080
-  - RULE-SET,OpenAi2,🇺🇸8080
-  - DOMAIN-SUFFIX,chatgpt.livekit.cloud,🇺🇸8080
-  - DOMAIN-SUFFIX,openai.com,🇺🇸8080
+  - RULE-SET,OpenAi,US8080
+  - RULE-SET,OpenAi2,US8080
+  - DOMAIN-SUFFIX,chatgpt.livekit.cloud,US8080
+  - DOMAIN-SUFFIX,openai.com,US8080
   - RULE-SET,Bing,Ⓜ️ 微软服务    
-  - DOMAIN-SUFFIX,location.microsoft.com,🇺🇸8080
-  - DOMAIN-SUFFIX,claude.ai,🇺🇸8080
-  - DOMAIN-SUFFIX,bard.google.com,🇺🇸8080  
-  - DOMAIN-SUFFIX,ora.ai,🇺🇸8080  
+  - DOMAIN-SUFFIX,location.microsoft.com,US8080
+  - DOMAIN-SUFFIX,claude.ai,US8080
+  - DOMAIN-SUFFIX,bard.google.com,US8080  
+  - DOMAIN-SUFFIX,ora.ai,US8080  
 
 #perplexity ai
-  - DOMAIN-SUFFIX,sentry.io,🇺🇸8080
-  - DOMAIN-SUFFIX,gstatic.com,🇺🇸8080
-  - DOMAIN-SUFFIX,perplexity.ai,🇺🇸8080  
-  - DOMAIN-SUFFIX,revenuecat.com,🇺🇸8080
-  - DOMAIN-SUFFIX,static.cloudflareinsights.com,🇺🇸8080
-  - DOMAIN-SUFFIX,crashlytics.com,🇺🇸8080  
+  - DOMAIN-SUFFIX,sentry.io,US8080
+  - DOMAIN-SUFFIX,gstatic.com,US8080
+  - DOMAIN-SUFFIX,perplexity.ai,US8080  
+  - DOMAIN-SUFFIX,revenuecat.com,US8080
+  - DOMAIN-SUFFIX,static.cloudflareinsights.com,US8080
+  - DOMAIN-SUFFIX,crashlytics.com,US8080  
   
 #区域检查
   - DOMAIN-SUFFIX,growth-pa.googleapis.com,🐟🐟🐟
@@ -954,7 +954,7 @@ rules:
   - DOMAIN-SUFFIX,android.apis.google.com,🐟🐟🐟
 
   - DOMAIN-SUFFIX,accounts.google.com,🐟🐟🐟
-  - DOMAIN-SUFFIX,gobe.cc,🇨🇳443
+  - DOMAIN-SUFFIX,gobe.cc,CN443
 
 # 阿里网盘
   - DOMAIN-SUFFIX,api.aliyundrive.com,🎯 全球直连
