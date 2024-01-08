@@ -1,1 +1,36 @@
+# 交易和市场相关参数
+profit1 = 0.01  # 利润参数1，用于计算和设置盈利目标
+profit2 = 0.002  # 利润参数2，通常设定为小于 profit1 的值
+Trailing_take_profit = 0.005  # 追踪止盈比例，例如 0.005 表示追踪止盈为0.5%
+Slippage = 0.002  # 滑点，callbalck(%)=100slippage,
+
+# 量化交易和策略参数
+leverage = 1.01  # 杠杆倍数，用于放大交易头寸
+interval_ssbb = "15m"  # 趋势K线周期，例如 '5m' 表示5分钟
+interval = "3m"  # 震荡K线周期，例如 '5m' 表示5分钟
+limit = 480  # 限制获取市场数据时的数据点数量
+limit_test = 672  # 回测获取市场数据时的数据点数量
+martingale = 1.01  # 马丁格尔策略倍数，用于在损失后增加投资量
+pmom = 66  # 正动量阈值，用于判断市场趋势
+nmom = 30  # 负动量阈值，用于判断市场趋势
+ssbb_logic_enabled = 1  # ssbb 和 sbsb 逻辑开关
+price_change_enabled = 1  # 价格变化逻辑开关
+cost_price_logic_enabled = 1  # 成本和价格逻辑开关
+technical_indicators_enabled = 1  # 震荡技术指标逻辑开关
+macd_signal_enabled = 1  # 趋势MACD信号逻辑开关
+
+# 订单和仓位管理相关参数
+min_quantity = 0.01  # 最小下单量
+step_size = 0.001  # 订单量调整的步长
+max_position_size = 0.1  # 允许的最大持仓量，用于风险控制
+force_reduce = 0  # 是否启用强制减仓，0 表示不启用
+
+# 程序运行和性能参数
+max_run_time = 60 * 60 * 24 * 7  # 最大运行时间，以秒为单位
+monitoring_interval = 60  # 监测策略条件成立的时间间隔（秒）
+order_interval = 60  # 下单操作的时间间隔（秒）
+update_interval = 60  # 更新价格的时间间隔（秒）
+ltime = 55  # 循环限速时间（秒）
+stime = 550  # 交易操作的频率（秒）
+
 logger.info("完成加载配置")
