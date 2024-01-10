@@ -29,7 +29,7 @@ force_reduce = 0  # 是否启用强制减仓，0 表示不启用
 max_run_time = 60 * 60 * 24 * 7  # 最大运行时间，以秒为单位
 monitoring_interval = 60  # 监测策略条件成立的时间间隔（秒）
 order_interval = 60  # 下单操作的时间间隔（秒）
-update_interval = 60  # 更新价格的时间间隔（秒）
+update_interval = 180  # 更新价格的时间间隔（秒）
 ltime = 55  # 循环限速时间（秒）
 stime = 550  # 交易操作的频率（秒）
 
