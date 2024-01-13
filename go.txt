@@ -18,6 +18,7 @@ price_change_enabled = 1  # 价格变化逻辑开关
 cost_price_logic_enabled = 1  # 成本和价格逻辑开关
 technical_indicators_enabled = 1  # 震荡技术指标逻辑开关
 macd_signal_enabled = 1  # 趋势MACD信号逻辑开关
+trading_strategy_enabled = 0
 
 # 订单和仓位管理相关参数
 min_quantity = 0.01  # 最小下单量
