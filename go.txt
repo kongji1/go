@@ -38,7 +38,7 @@ stime = 550  # 交易操作的频率（秒）
 #追加策略
 starta_direction = 'lb'
 add_position = min_quantity
-add_rate = 0.01
+add_rate = 0.006
 ts_threshold = 50 #分数阈值
 
 logger.info("加载配置")
