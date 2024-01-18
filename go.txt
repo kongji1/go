@@ -41,4 +41,4 @@ add_position = min_quantity
 add_rate = 0.006
 ts_threshold = 50 #分数阈值
 
-logger.info("加载配置")
+logger.info("配置已加载")
