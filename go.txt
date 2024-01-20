@@ -1,3 +1,5 @@
+is_paused = False
+#is_paused = Ture
 # 交易和市场相关参数
 profit1 = 0.01  # 利润参数1，用于计算和设置盈利目标
 profit2 = 0.002  # 利润参数2，通常设定为小于 profit1 的值
