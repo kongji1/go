@@ -2,7 +2,7 @@ is_paused = False
 #is_paused = Ture
 # 交易和市场相关参数
 profit1 = 0.01  # 利润参数1，用于计算和设置盈利目标
-profit2 = 0.002  # 利润参数2，通常设定为小于 profit1 的值
+profit2 = 0.02  # 利润参数2，通常设定为小于 profit1 的值
 Trailing_take_profit = 0.005  # 追踪止盈比例，例如 0.005 表示追踪止盈为0.5%
 Slippage = 0.002  # 滑点，callbalck(%)=100slippage
 callback = 100 * Slippage  # 回调比例，例如 100 * Slippage 表示回调为100倍滑点
