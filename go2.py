@@ -2340,28 +2340,29 @@ async def main_loop():
             logger.info(f"暂停10,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
 
+def run_main_loop():
+  while True:
+      try:
+          logger = setup_logging()
+          execute_config_file(get_config_file())
+          config = load_config()
+          client = setup_um_futures_client()
+          get_public_ip_and_latency()
+          asyncio.run(main())
+          logger.info(f"暂停11,{30}")
+          time.sleep(30) 
+      except KeyboardInterrupt:
+          logger.info("键盘中断检测到。程序将在60秒后重新启动...")
+          time.sleep(60) 
+          os.execv(sys.executable, ['python'] + sys.argv)
+      except Exception as e:
+          logger.error(f"程序运行中发生错误: {e}")
+          traceback_str = traceback.format_exc()
+          logger.error(f"堆栈跟踪: {traceback_str}")
+          logger.info(f"暂停12,{30}")
+          time.sleep(30) 
+          os.execv(sys.executable, ['python'] + sys.argv)
+
 
 if __name__ == "__main__":
-    while True:
-        try:
-            logger = setup_logging()
-            execute_config_file(get_config_file())
-            config = load_config()
-            client = setup_um_futures_client()
-            get_public_ip_and_latency()
-            asyncio.run(main())
-            logger.info(f"暂停11,{30}")
-            time.sleep(30) 
-        except KeyboardInterrupt:
-            logger.info("键盘中断检测到。程序将在60秒后重新启动...")
-            time.sleep(60) 
-            os.execv(sys.executable, ['python'] + sys.argv)
-
-        except Exception as e:
-            logger.error(f"程序运行中发生错误: {e}")
-            traceback_str = traceback.format_exc()
-            logger.error(f"堆栈跟踪: {traceback_str}")
-            logger.info(f"暂停12,{30}")
-            time.sleep(30) 
-            os.execv(sys.executable, ['python'] + sys.argv)
-
+    run_main_loop()
