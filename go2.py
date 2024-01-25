@@ -172,7 +172,8 @@ def update_status(key, value):
 import threading
 
 class StatusManager:
-    def __init__(self, file_name, trading_pair, save_interval=60):
+    def __init__(self, file_name, trading_pair, save_interval=60, logger=None):
+        self.logger = logger
         self.file_path = self.build_file_path(file_name)
         self.trading_pair = trading_pair
         self.save_interval = save_interval
@@ -218,14 +219,18 @@ class StatusManager:
 
             # 重命名临时文件为正式文件
             os.replace(temp_file_path, self.file_path)
-            logger.info(f"状态已保存到文件: {self.trading_pair}")
+            if self.logger:
+                self.logger.info(f"状态已保存到文件: {self.trading_pair}")
+
 
         except Exception as e:
-            logger.error(f"保存状态到文件时出错: {e}")
+            if self.logger:
+                self.logger.error(f"保存状态到文件时出错: {e}")
             # 如果可能，尝试恢复旧文件
             if os.path.exists(temp_file_path):
                 os.replace(temp_file_path, self.file_path)
-                logger.info("已恢复到上一个状态文件版本")
+                if self.logger:
+                    self.logger.info("已恢复到上一个状态文件版本")
 
         self.save_timer = threading.Timer(self.save_interval, self.save_status)
         self.save_timer.start()
@@ -1889,7 +1894,7 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
         if start_order_price == None and start_price_reached == False:
           start_order_price = round(optimal_price * (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), 1)
           logger.info(f"启动价为None并未触发则用最佳价格的{add_rate}：{start_order_price}")
-          
+
         if (trade_direction == 'lb' and start_order_price != None and current_price <= start_order_price) or \
       (trade_direction == 'ss' and start_order_price != None and current_price >= start_order_price):
           start_price_reached = True
@@ -1949,7 +1954,7 @@ def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quanti
 
     if trade_quantity < min_quantity:
       raise ValueError(f"交易数量{trade_quantity}必须大于等于最小下单量 (min_quantity)")
-      
+
     #logger.info(f"类型 - trade_quantity: {type(trade_quantity)}, 值 - trade_quantity: {trade_quantity}")
     decimal_places = 3
     trade_quantity_float = float(trade_quantity)
@@ -2079,7 +2084,7 @@ def trading_strategy():
            (starta_direction == 'ss' and current_price > optimal_price_1):
             optimal_price_1 = current_price  # 更新最佳价格
             logger.info(f"更新最佳价格：{optimal_price_1}")
-          
+
           add_position_1 += add_position
           start_price_reached_1 = False
           start_price_reached_2 = False
@@ -2099,7 +2104,7 @@ def trading_strategy():
             add_position_1 = 0
             trade_executed_1 = True
             logger.info(f"保本止盈2{trade_executed_2}，重置交易量，动态追踪1改{trade_executed_1}")
-          
+
         logger.info(f"新订单已放置在 {trigger_price}，仓位更新为 {starta_position}，平均成本更新为 {starta_cost}，止盈价格更新为 {profit_price}")
 
 
