@@ -1273,7 +1273,6 @@ def c_macd(interval, fastperiod, slowperiod, signalperiod):
       logger.error(f"在c_macd中发生异常：{e}")
       return pd.Series(), pd.Series()
 
-
 async def backtest_macd(interval, fastperiod_range, slowperiod_range, signalperiod_range, initial_capital=10000):
     best_return = -np.inf
     best_params = None
@@ -1317,8 +1316,6 @@ async def backtest_macd(interval, fastperiod_range, slowperiod_range, signalperi
     else:
         logger.info("未找到有效的MACD参数组合")
         return None, best_return
-
-
 
 async def macdbest():
     global fastperiod, slowperiod, signalperiod, fastperiod_lower_bound, fastperiod_upper_bound, slowperiod_lower_bound, slowperiod_upper_bound, signalperiod_lower_bound, signalperiod_upper_bound
@@ -1383,9 +1380,7 @@ async def macdbest():
             status_manager.update_status('signalperiod_upper_bound', signalperiod_range.stop - 1)
             logger.info(f"未找到更好的MACD参数组合，结束搜索。最终确定的MACD参数：{best_params}，回报率：{best_return:.2%}")
             break
-
     return best_params
-
 # 支撑线计算
 def c_support_resistance(interval):
     global kline_data_cache
@@ -1517,7 +1512,6 @@ def calculate_score(conditions_enabled):
       (conditions_enabled['cost_price_logic'], long_cost != 0 and current_price > long_cost * (1 + 3 * FP) and current_price > last_s_order_price * (1 + 3 * FP), -25, "获利3FP强制卖出逻辑，减25分"),
       (conditions_enabled['cost_price_logic'], short_cost != 0 and current_price < short_cost * (1 - 3 * FP) and current_price < last_order_price * (1 - 3 * FP), 25, "获利3FP强制买入逻辑，加25分"),
 
-
     # 滞后指标 MACD
       (conditions_enabled['macd_signal'], macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] < signal.iloc[-2], 50, f"MACD {macd.iloc[-1]:.2f} 上穿信号线{signal.iloc[-1]:.2f}，加50分"),
       (conditions_enabled['macd_signal'], macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] > signal.iloc[-2], 25, f"MACD {macd.iloc[-1]:.2f} 高于信号线{signal.iloc[-1]:.2f}，加25分"),
@@ -1534,7 +1528,6 @@ def calculate_score(conditions_enabled):
 
 stop_loss_limit = 0.02  # 停损价格阈值
 take_profit_limit = 0.02  # 止盈价格阈值
-
 # 网格系统
 def calculate_composite_score(current_price, last_order_price, last_s_order_price, stop_loss_limit, take_profit_limit):
     global temp_ssbb
@@ -1562,8 +1555,6 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       'macd_signal': macd_signal_enabled
     }
     score = calculate_score(conditions_enabled)
-
-
   # 网格思路预筛
     score_threshold = 50 #设置阈值
         # 首先检查分数是否达到阈值
@@ -1606,7 +1597,6 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       action = "无操作"
       ref_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
       significant_change, price_change_ratio = is_price_change_significant(current_price, ref_price)
-
       # Decision-making logic
       if last_order_direction == 'BUY':
           if score >= score_threshold:
@@ -1622,7 +1612,6 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
           logger.info(f"无效的最后订单方向：{last_order_direction}")
 
       logger.info(f"决策：{action}\n分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}\n价格变化比：{price_change_ratio:.2%}，\nsbsb: {sbsb},ssbb: {ssbb}")
-
     # 确定是否更新 ssbb
     if temp_ssbb != ssbb:
         temp_ssbb = ssbb  # 更新临时变量
@@ -1660,7 +1649,6 @@ def calculate_next_order_parameters(price, leverage):
 
 def adjust_quantity(ad_quantity):
  #调整下单量以满足最小值和步进要求。:param quantity: 原始下单量"""
-
     # 确保下单量至少为最小值
     if  ad_quantity < min_quantity:
         ad_quantity = 0
@@ -1668,9 +1656,7 @@ def adjust_quantity(ad_quantity):
     else:
         # 调整为符合步进大小的最接近值
         ad_quantity = math.ceil(ad_quantity / step_size) * step_size
-
     return ad_quantity
-
 
 def update_order_status(response, position):
       global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position
@@ -1841,7 +1827,6 @@ def place_limit_order(symbol, position, price, quantitya, callback):
         logger.error(f"Unexpected error: {e}")
         logger.info(f"暂停5,12s")
         time.sleep(12)
-
 # 查询订单
 def query_order(order_id):
     try:
@@ -1934,9 +1919,6 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
     except Exception as e:
         logger.error(f"执行动态追踪时发生错误: {e}")
         return False, True, optimal_price
-
-
-
 # 保本止盈trade_direction=lb买入
 def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quantity, start_order_price=None, start_price_reached=False, trade_executed = False):
   global current_price
@@ -1954,7 +1936,6 @@ def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quanti
 
     if trade_quantity < min_quantity:
       raise ValueError(f"交易数量{trade_quantity}必须大于等于最小下单量 (min_quantity)")
-
     #logger.info(f"类型 - trade_quantity: {type(trade_quantity)}, 值 - trade_quantity: {trade_quantity}")
     decimal_places = 3
     trade_quantity_float = float(trade_quantity)
@@ -2106,8 +2087,6 @@ def trading_strategy():
             logger.info(f"保本止盈2{trade_executed_2}，重置交易量，动态追踪1改{trade_executed_1}")
 
         logger.info(f"新订单已放置在 {trigger_price}，仓位更新为 {starta_position}，平均成本更新为 {starta_cost}，止盈价格更新为 {profit_price}")
-
-
       # 检查是否达到止盈点
       if (starta_position != 0 and starta_direction == 'lb' and current_price > profit_price) or (starta_position != 0 and starta_direction == 'ss' and current_price < profit_price):
         profit_position =  starta_position - add_position  # 止盈量
@@ -2288,8 +2267,6 @@ async def run_periodic_tasks():
           logger.info(f"暂停8,{60}")
           await asyncio.sleep(60)
 
-
-
 async def main():
     task1 = asyncio.create_task(run_periodic_tasks())  # 创建运行定期任务的任务
     task2 = asyncio.create_task(main_loop())   # 创建主循环任务
@@ -2367,7 +2344,6 @@ def run_main_loop():
           logger.info(f"暂停12,{30}")
           time.sleep(30) 
           os.execv(sys.executable, ['python'] + sys.argv)
-
 
 if __name__ == "__main__":
     run_main_loop()
