@@ -693,16 +693,20 @@ def current_status():
 
         # 最近side和余额
         side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.1f}, 余额: {float(floating_margin):.1f}" if floating_margin is not None else "None"
+        logger.info(side_and_balance)
+        logger.info(last_order_info)
+        logger.info(cost_info)
+        logger.info(position_info)
 
         # 状态信息
-        status_message = "\n".join([
-            side_and_balance,
-            last_order_info,
-            cost_info,
-            position_info
-        ])
+#        status_message = "\n".join([
+ #           side_and_balance,
+  #          last_order_info,
+   #         cost_info,
+    #        position_info
+     #   ])
 
-        logger.info(status_message)
+      #  logger.info(status_message)
     except Exception as e:
         logger.error(f"获取当前状态时出错: {e}")
 
@@ -1621,7 +1625,10 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       else:
           logger.info(f"无效的最后订单方向：{last_order_direction}")
 
-      logger.info(f"决策：{action}\n分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}\n价格变化比：{price_change_ratio:.2%}，\nsbsb: {sbsb},ssbb: {ssbb}")
+      logger.info(f"决策：{action}")
+      logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
+      logger.info(f"价格变化比：{price_change_ratio:.2%}")
+      logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
 
     # 确定是否更新 ssbb
     if temp_ssbb != ssbb:
