@@ -2344,8 +2344,9 @@ async def main_loop():
             logger.error(f"堆栈跟踪: {traceback.format_exc()}")
             logger.info(f"暂停10,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
-
+logger = None
 def run_main_loop():
+  global logger
   while True:
       try:
           logger = setup_logging()
