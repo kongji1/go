@@ -368,7 +368,7 @@ time_in_force = 'GTC'  # 订单时效，'GTC' 表示订单有效直到取消（G
 profit1 = 0.01  # 利润参数1，用于计算和设置盈利目标
 profit2 = 0.002  # 利润参数2，通常设定为小于 profit1 的值
 Trailing_take_profit = 0.005  # 追踪止盈比例，例如 0.005 表示追踪止盈为0.5%
-Slippage = 0.02  # 滑点，callback(%)=100slippage,
+Slippage = 0.002  # 滑点，callback(%)=100slippage,
 callback = 100 * Slippage  # 回调比例，例如 100 * Slippage 表示回调为100倍滑点
 
 # 量化交易和策略参数
@@ -861,7 +861,9 @@ async def update_kline_data_async(symbol, current_time):
           logger.info(f"已更新: {interval}   {len(kline_data_cache[interval])}\n")
           update_performed = True
       if update_performed:
-        logger.info(f"待更新数据 \n  {interval_ssbb}: {len(kline_data_cache[interval_ssbb])} \n  {interval}: {len(kline_data_cache[interval])}\n")
+        logger.info(f"待更新数据")
+        logger.info(f"  {interval_ssbb}: {len(kline_data_cache[interval_ssbb])}")
+        logger.info(f"{interval}: {len(kline_data_cache[interval])}\n")
 
   except Exception as e:
       # 在这里捕获可能引发的异常
@@ -1684,10 +1686,12 @@ def update_order_status(response, position):
       if 'price' in response and 'origQty' in response and 'type' in response and 'side' in response:
         update_price = float(response['price'] if response['type'] != 'TRAILING_STOP_MARKET' else response['activatePrice'])
         quantity = float(response['origQty'])
-        logger.info(f"#######################\n=======================\n#######################\n=======================\ncpo成功{response['side']}：{update_price}")
+        logger.info(f"#######################")
+        logger.info(f"=======cpo成功===========")
+        logger.info(f"#######################")
+        logger.info(f"=======================")
+        logger.info(f"cpo成功{response['side']}：{update_price}")
         update_position_cost(update_price, quantity, response['positionSide'], response['side'])
-        # 优化：使用激活价格(activatePrice)作为平仓订单的价格
-        # 检查交易方向并更新平均成本和持仓量
         if response['side'] == 'BUY':
             if last_order_direction == 'SELL':
                 average_short_cost, average_short_position = 0, 0
@@ -1744,14 +1748,22 @@ def update_order_status(response, position):
         time.sleep(order_interval )  # 等待12秒
 
 # 下单交易
-def place_limit_order(symbol, position, price, quantitya, callback):
+def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
 
     global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, client, logger, FP, quantity, last_order_direction
+    logger.info(f"#######################")
+    logger.info(f"=======调用下单========")
+    logger.info(f"#######################")
+    logger.info(f"=======================")
+    if callback < Slippage * 100:
+      callback = min(Slippage * 100, 0.4)
     if is_paused:
         logger.info("脚本暂停执行")
         return
     origQty = quantitya
+    logger.info(f"下单价格: {price}")
     price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), 1)
+    logger.info(f"slippage优化下单价格: {price}")
     if origQty <= 0:
         logger.error("下单量必须大于0")
         return NONE
@@ -1775,6 +1787,7 @@ def place_limit_order(symbol, position, price, quantitya, callback):
     order_side, position_side = determine_order_side()
 
     def create_trailing_stop_order_params(order_side, position_side, price, callback, origQty):
+      logger.info(f"动态追踪优化激活价格: {price}*0.02 * callback")
       return {
           'symbol': symbol,
           'side': order_side,
@@ -1800,6 +1813,8 @@ def place_limit_order(symbol, position, price, quantitya, callback):
       }
 
     def create_take_profit_order_params(order_side, position_side, price, origQty):
+      logger.info(f"止盈单优化止盈激活价格: {price}*0.005 * callback")
+      logger.info(f"止盈单优化止盈价格: {price}*0.02 * callback")
       return {
           'symbol': symbol,
           'side': order_side,
@@ -2336,6 +2351,7 @@ async def main_loop():
                 update_order_status(response, order_position)
                 logger.info(f"网格系统下单成功")
             current_status()
+   #         beta() #测试代码
             logger.info(f"暂停9,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 等待一分钟
             if current_time.minute % 2 == 1:
@@ -2351,11 +2367,22 @@ async def main_loop():
             logger.error(f"堆栈跟踪: {traceback.format_exc()}")
             logger.info(f"暂停10,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
+
+def beta():
+  # place_limit_order(symbol, position, price, quantitya, callback)
+  symbol = 'ETHUSDT'
+  position = 'lb'
+  price1,_ = get_current_price(symbol) 
+  price = price1 - 1
+  quantitya = min_quantity
+  callback = 0.1
+  place_limit_order(symbol, position, price, quantitya, callback)
+  logger.info(f"/n/nbbbbbeeeeettttttaaaaa")
 logger = None
 def run_main_loop():
   global logger, client
   while True:
-      try:
+      try: 
           logger = setup_logging()
           execute_config_file(get_config_file())
           config = load_config()
