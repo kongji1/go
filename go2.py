@@ -1621,6 +1621,8 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
         price_change_ratio = abs(current_price - ref_price) / max(current_price, ref_price)
         current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
         significant_change = False
+        liquidation_price = calculate_liquidation_price(initial_margin, current_price, FP, quantity_grid, 1, current_order_direction)  # 买入，多头
+        logger.info(f'{current_order_direction}爆仓价格: {liquidation_price}')
         # 通过一个简化的逻辑表达式来判断价格变化是否显著
         if last_order_direction == current_order_direction:
           if (current_price < ref_price * (1 - FP) and last_order_direction == 'BUY') or \
@@ -1669,8 +1671,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
       logger.info(f"价格变化比：{price_change_ratio:.2%}")
       logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
-    liquidation_price = calculate_liquidation_price(initial_margin, current_price, FP, quantity_grid, 1, last_order_direction)  # 买入，多头
-    print(f'current_order_direction爆仓价格: {liquidation_price}')
+    
     # 确定是否更新 ssbb
     if temp_ssbb != ssbb:
         temp_ssbb = ssbb  # 更新临时变量
