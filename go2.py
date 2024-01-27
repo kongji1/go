@@ -2353,7 +2353,7 @@ async def main_loop():
             await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
 logger = None
 def run_main_loop():
-  global logger
+  global logger, client
   while True:
       try:
           logger = setup_logging()
