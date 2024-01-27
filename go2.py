@@ -428,13 +428,15 @@ long_position = status_manager.get_status('long_position', 0)
 short_position = status_manager.get_status('short_position', 0)
 long_cost = status_manager.get_status('long_cost', 0)
 short_cost = status_manager.get_status('short_cost', 0)
+initial_margin = status_manager.get_status('initial_margin', 265)
 floating_margin = status_manager.get_status('floating_margin', 0)
 initial_balance = status_manager.get_status('initial_balance', 0)
 last_order_price = status_manager.get_status('last_order_price', 0)
 last_s_order_price = status_manager.get_status('last_s_order_price', 0)
 temp_ssbb = status_manager.get_status('ssbb', 0)
 FP = status_manager.get_status('FP', 0.01)
-quantity = status_manager.get_status('quantity', min_quantity)
+quantity_grid = status_manager.get_status('quantity_grid', 0.01) #网格单位交易量
+quantity = status_manager.get_status('quantity', min_quantity) #网格最近交易量
 last_order_direction = status_manager.get_status('last_order_direction', 'BUY')
 
 last_price_update_time_str = status_manager.get_status('last_price_update_time', None)
@@ -1569,7 +1571,43 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
     }
     score = calculate_score(conditions_enabled)
 
+    def calculate_liquidation_price(initial_margin_l, start_price_l, amplitude_percent_l, add_amount_l, leverage_l, trade_direction_l='BUY'):
+      #initial_margin: 初始保证金 start_price: 起始价格 amplitude: 波动幅度（百分比）add_amount: 每次增加的头寸数量 leverage: 马丁系数 trade_direction: 交易方向，'BUY' 表示买入（多头），'SELL' 表示卖出（空头）。默认为 'BUY'。
 
+      current_price_l = start_price_l
+      total_quantity_l = long_position if trade_direction_l == 'BUY' else short_position
+      total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY' else short_cost )
+
+      while True:
+          # 增加头寸
+          total_quantity_l += add_amount_l
+          total_cost_l += add_amount_l * current_price_l
+          # 计算平均成本
+          average_cost_l = total_cost_l / total_quantity_l
+          # 根据交易方向计算亏损
+          if trade_direction_l == 'BUY':
+            loss_l = (average_cost_l - current_price_l) * total_quantity_l
+          elif trade_direction_l == 'SELL':
+            loss_l = (current_price_l - average_cost_l) * total_quantity_l
+          else:
+            raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
+          # 检查亏损是否超过初始保证金
+          if loss_l > initial_margin_l:
+              logger.info(f"{loss_l:.2f} > {initial_margin_l:.2f}")
+              logger.info(f"头寸{total_quantity_l:.2f}")
+              return round(current_price_l, 2)
+          # 根据百分比和杠杆调整价格，根据交易方向确定涨跌
+          if trade_direction_l == 'BUY':
+              current_price_l -= (current_price_l * amplitude_percent_l) * leverage_l
+          elif trade_direction_l == 'SELL':
+              current_price_l += (current_price_l * amplitude_percent_l) * leverage_l
+          else:
+              raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
+
+    # 示例使用
+    
+
+        
   # 网格思路预筛
     score_threshold = 50 #设置阈值
         # 首先检查分数是否达到阈值
@@ -1631,7 +1669,8 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
       logger.info(f"价格变化比：{price_change_ratio:.2%}")
       logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
-
+    liquidation_price = calculate_liquidation_price(initial_margin, current_price, FP, quantity_grid, 1, last_order_direction)  # 买入，多头
+    print(f'current_order_direction爆仓价格: {liquidation_price}')
     # 确定是否更新 ssbb
     if temp_ssbb != ssbb:
         temp_ssbb = ssbb  # 更新临时变量
@@ -1659,7 +1698,7 @@ def calculate_next_order_parameters(price, leverage):
           logger.info(f"grid:{grid_count}/{grid_ratio}/{1 + FP}")
           grid_count = 6
         # 根据网格数量调整下单量
-        origQty = adjust_quantity(quantity * grid_count)
+        origQty = adjust_quantity(quantity_grid * grid_count)
 
         return next_price, origQty
     except Exception as e:
