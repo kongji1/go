@@ -2446,7 +2446,7 @@ async def main_loop():
             # 记录完整的堆栈跟踪
             logger.error(f"堆栈跟踪: {traceback.format_exc()}")
             logger.info(f"暂停10,{monitoring_interval}")
-            await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
+            await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟0
 
 def beta():
   # place_limit_order(symbol, position, price, quantitya, callback)
