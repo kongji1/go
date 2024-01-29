@@ -432,7 +432,9 @@ initial_margin = status_manager.get_status('initial_margin', 265)
 floating_margin = status_manager.get_status('floating_margin', 0)
 initial_balance = status_manager.get_status('initial_balance', 0)
 last_order_price = status_manager.get_status('last_order_price', 0)
+last_order_orderId = status_manager.get_status('last_order_orderId', 0)
 last_s_order_price = status_manager.get_status('last_s_order_price', 0)
+last_s_order_orderId = status_manager.get_status('last_s_order_order', 0)
 temp_ssbb = status_manager.get_status('ssbb', 0)
 FP = status_manager.get_status('FP', 0.01)
 quantity_grid = status_manager.get_status('quantity_grid', 0.01) #网格单位交易量
@@ -1752,8 +1754,12 @@ def update_order_status(response, position):
         logger.info(f"update_price to last_order{update_price}")
         if position in ('lb', 'sb'):
           last_order_price = update_price
+          last_order_orderId = response['orderId']
+          status_manager.update_status('last_order_orderId', last_order_orderId)
         elif position in ('ls', 'ss'):
           last_s_order_price = update_price
+          last_s_order_orderId = response['orderId']
+          status_manager.update_status('last_s_order_orderId', last_s_order_order)
         status_manager.update_status('last_order_price', last_order_price)
         status_manager.update_status('last_s_order_price', last_s_order_price)
         quantity = float(quantity - min_quantity) * float(martingale) + min_quantity
@@ -1795,11 +1801,19 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
     logger.info(f"=======调用下单========")
     logger.info(f"#######################")
     logger.info(f"=======================")
+    if is_paused:
+      logger.info("脚本暂停执行")
+      return
+    if position not in ['lb', 'ss']:
+      logging.error(f"无效的订单意图：{position}")
+      return
+    if position == 'lb' and long_position > max_position_size and short_position <= 0 or \
+     position == 'ss' and short_position > max_position_size and long_position <= 0:
+      logging.error(f"仓位风控{max_position_size}：{position}，当前仓位：{long_position if position == 'lb' else short_position}")
+      return
     if callback < Slippage * 100:
       callback = min(Slippage * 100, 0.4)
-    if is_paused:
-        logger.info("脚本暂停执行")
-        return
+    
     origQty = quantitya
     logger.info(f"下单价格: {price}")
     price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), 1)
@@ -2391,7 +2405,13 @@ async def main_loop():
                 update_order_status(response, order_position)
                 logger.info(f"网格系统下单成功")
             current_status()
-   #         beta() #测试代码
+
+
+          
+            beta() #测试代码
+
+
+          
             logger.info(f"暂停9,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 等待一分钟
             if current_time.minute % 2 == 1:
