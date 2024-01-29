@@ -1575,7 +1575,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
 
     def calculate_liquidation_price(initial_margin_l, start_price_l, amplitude_percent_l, add_amount_l, leverage_l, trade_direction_l='BUY'):
       #initial_margin: 初始保证金 start_price: 起始价格 amplitude: 波动幅度（百分比）add_amount: 每次增加的头寸数量 leverage: 马丁系数 trade_direction: 交易方向，'BUY' 表示买入（多头），'SELL' 表示卖出（空头）。默认为 'BUY'。
-
+      global max_position_size
       current_price_l = start_price_l
       total_quantity_l = long_position if trade_direction_l == 'BUY' else short_position
       total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY' else short_cost )
