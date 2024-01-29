@@ -1799,7 +1799,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
     global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, client, logger, FP, quantity, last_order_direction
     logger.info(f"#######################")
     logger.info(f"=======调用下单========")
-    logger.info(f"#######################")
+    logger.info(f"#########{position}############")
     logger.info(f"=======================")
     if is_paused:
       logger.info("脚本暂停执行")
@@ -1809,7 +1809,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
       return
     if position == 'lb' and long_position > max_position_size and short_position <= 0 or \
      position == 'ss' and short_position > max_position_size and long_position <= 0:
-      logging.error(f"仓位风控{max_position_size}：{position}，当前仓位：{long_position if position == 'lb' else short_position}")
+      logging.error(f"{position}风控{max_position_size}：多:{long_position} 空:{short_position}")
       return
     if callback < Slippage * 100:
       callback = min(Slippage * 100, 0.4)
@@ -2437,7 +2437,7 @@ def beta():
   quantitya = min_quantity
   callback = 0.1
   place_limit_order(symbol, position, price, quantitya, callback)
-  logger.info(f"/n/nbbbbbeeeeettttttaaaaa")
+  logger.info(f"\n/nbbbbbeeeeettttttaaaaa")
 logger = None
 def run_main_loop():
   global logger, client
