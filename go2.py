@@ -360,7 +360,7 @@ async def visit_url(url):
 # 使用此函数时请谨慎，并确保您理解相关的安全风险
 is_paused = False
 # 交易和市场相关参数
-symbol = 'ETHUSDT'  #@@ 交易对符号 BTCUSDT ETHUSDT
+symbol = 'LSKUSDT'  #@@ 交易对符号 BTCUSDT ETHUSDT LSKUSDT
 symbolp = "BTCUSDT_PERP"  # 特定交易产品的标识符
 side = 'BUY'  # 交易方向，'BUY' 表示买入操作
 order_type = 'LIMIT'  # 订单类型，'LIMIT' 表示限价订单
@@ -388,7 +388,7 @@ macd_signal_enabled = 1  # MACD信号逻辑开关
 trading_strategy_enabled = 1 # 追加对冲策略开关
 
 # 订单和仓位管理相关参数
-min_quantity = 0.01  #@@ 最小下单量 0.003 0.01
+
 step_size = 0.001  # 订单量调整的步长
 max_position_size = 0.1  #@@ 允许的最大持仓量，0.025 0.1
 force_reduce = 0  # 是否启用强制减仓，0 表示不启用
@@ -414,12 +414,16 @@ last_known_price = None  # 用于存储最后一次成功获取的价格
 last_price_update_time = None  # 用于存储最后一次价格更新的时间
 sbsb = 0  # 策略的初始交易开关状态，0 表示关闭
 
-#追加策略
-add_position = min_quantity
+#对冲策略
 
 
-status_manager = StatusManager('status.yaml', 'ETHUSDT', save_interval=60)
+
+status_manager = StatusManager('status.yaml', symbol, save_interval=60)
 # 从status字典中获取值，并确保它们不是None
+min_price_step = status_manager.get_status('min_price_step', 0.001)
+dpp = len(str(min_price_step).split('.')[1]) if '.' in str(min_price_step) else 0 #decimal_places最小价格步长的小数位数
+min_quantity = status_manager.get_status('min_quantity', 0.01)
+dpq = len(str(min_price_step).split('.')[1]) if '.' in str(min_price_step) else 0 #decimal_places最小交易量的精度
 starta_direction = status_manager.get_status('starta_direction', 'lb')
 add_rate = status_manager.get_status('add_rate', 0.02)  # 追加仓位的跨度
 ts_threshold = status_manager.get_status('ts_threshold', 75) #分数阈值
@@ -437,7 +441,7 @@ last_s_order_price = status_manager.get_status('last_s_order_price', 0)
 last_s_order_orderId = status_manager.get_status('last_s_order_order', 0)
 temp_ssbb = status_manager.get_status('ssbb', 0)
 FP = status_manager.get_status('FP', 0.01)
-quantity_grid = status_manager.get_status('quantity_grid', 0.01) #网格单位交易量
+quantity_grid = status_manager.get_status('quantity_grid', min_quantity) #网格单位交易量
 quantity = status_manager.get_status('quantity', min_quantity) #网格最近交易量
 last_order_direction = status_manager.get_status('last_order_direction', 'BUY')
 
@@ -484,6 +488,7 @@ sobought_upper_bound = status_manager.get_status('sobought_upper_bound',90)
 
 
 starta_price = status_manager.get_status('starta_price', 0)
+add_position = status_manager.get_status('add_position', min_quantity)
 starta_position = status_manager.get_status('starta_position', add_position)
 starta_cost = status_manager.get_status('starta_cost', starta_price)
 trade_executed_1 = status_manager.get_status('trade_executed_1', False)
@@ -642,41 +647,41 @@ def get_current_price(symbol, max_retries=1, now=0):
 
 
 # 更新持仓成本
-def update_position_cost(price, quantity, position_side, operation_type):
+def update_position_cost(price, quantity_upc, position_side, operation_type):
   global long_position, short_position, long_cost, short_cost, floating_margin, initial_balance
 
   price = float(price)
-  quantity = float(quantity)
+  quantity_upc = float(quantity_upc)
 
   # 优化：仅当操作为买入/卖出时更新成本
   if position_side == "LONG" and operation_type in ['BUY', 'SELL']:
       if operation_type == 'BUY':
-          total_cost = long_cost * long_position + price * quantity
-          long_position += quantity
+          total_cost = long_cost * long_position + price * quantity_upc
+          long_position += quantity_upc
       else:  # 'SELL'
-          total_cost = max(0, long_cost * long_position - price * quantity)  # 防止负值
-          long_position = max(0, long_position - quantity)  # 防止负值
+          total_cost = max(0, long_cost * long_position - price * quantity_upc)  # 防止负值
+          long_position = max(0, long_position - quantity_upc)  # 防止负值
 
       long_cost = total_cost / long_position if long_position > 0 else 0
 
   elif position_side == "SHORT" and operation_type in ['SELL', 'BUY']:
       if operation_type == 'SELL':
-          total_cost = short_cost * short_position + price * quantity
-          short_position += quantity
+          total_cost = short_cost * short_position + price * quantity_upc
+          short_position += quantity_upc
       else:  # 'BUY'
-          total_cost = max(0, short_cost * short_position - price * quantity)  # 防止负值
-          short_position = max(0, short_position - quantity)  # 防止负值
+          total_cost = max(0, short_cost * short_position - price * quantity_upc)  # 防止负值
+          short_position = max(0, short_position - quantity_upc)  # 防止负值
 
       short_cost = total_cost / short_position if short_position > 0 else 0
 
-  status_manager.update_status('long_position', round(long_position, 2))
-  status_manager.update_status('short_position', round(short_position, 2))
-  status_manager.update_status('long_cost', round(long_cost, 1))
-  status_manager.update_status('short_cost', round(short_cost, 1))
+  status_manager.update_status('long_position', round(long_position, dpq))
+  status_manager.update_status('short_position', round(short_position, dpq))
+  status_manager.update_status('long_cost', round(long_cost, dpp))
+  status_manager.update_status('short_cost', round(short_cost, dpp))
 
   # 更新浮动利润和余额
   floating_margin = initial_balance + (price - long_cost) * long_position + (short_cost - price) * short_position
-  status_manager.update_status('floating_margin', round(floating_margin, 1))
+  status_manager.update_status('floating_margin', round(floating_margin, dpp))
 
 # 获取当前仓位状态
 def current_status():
@@ -685,18 +690,18 @@ def current_status():
         last_order_info = []
         logger.info("\n***** 最近交易与仓位 *****")
         if last_order_price is not None:
-            last_order_info.append(f"-最近买单: {float(last_order_price):.1f}")
+            last_order_info.append(f"-最近买单: {float(last_order_price):.{dpp}f}")
         if last_s_order_price is not None:
-            last_order_info.append(f"最近卖单: {float(last_s_order_price):.1f}")
+            last_order_info.append(f"最近卖单: {float(last_s_order_price):.{dpp}f}")
         last_order_info = ", ".join(last_order_info) or "最近订单: None"
 
         # 构建成本和持仓量信息
-        cost_info = f"-多头成本: {float(long_cost):.1f}" if long_cost is not None else "None"
-        cost_info += f", 空头成本: {float(short_cost):.1f}" if short_cost is not None else ", None"
-        position_info = f"-多头持仓量: {round(long_position, 4)}, 空头持仓量: {round(short_position, 4)}"
+        cost_info = f"-多头成本: {float(long_cost):.{dpp}f}" if long_cost is not None else "None"
+        cost_info += f", 空头成本: {float(short_cost):.{dpp}f}" if short_cost is not None else ", None"
+        position_info = f"-多头持仓量: {round(long_position, dpq)}, 空头持仓量: {round(short_position, dpq)}"
 
         # 最近side和余额
-        side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.1f}, 余额: {float(floating_margin):.1f}" if floating_margin is not None else "None"
+        side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.{dpp}f}, 余额: {float(floating_margin):.{dpp}f}" if floating_margin is not None else "None"
         logger.info(side_and_balance)
         logger.info(last_order_info)
         logger.info(cost_info)
@@ -1595,14 +1600,14 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
             raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
           # 检查亏损是否超过初始保证金
           if loss_l > initial_margin_l:
-              if max_position_size != round((total_quantity_l / 5),2):
+              if max_position_size != round((total_quantity_l / 5),dpq):
                 logger.info(f"原风控仓位:{max_position_size}")
-                max_position_size = round((total_quantity_l / 5),2)
+                max_position_size = round((total_quantity_l / 5),dpq)
                 status_manager.update_status('max_position_size', max_position_size)  
               logger.info(f"风控仓位{max_position_size}")
               logger.info(f"{loss_l:.2f} > {initial_margin_l:.2f}")
               logger.info(f"头寸{total_quantity_l:.2f}")
-              return round(current_price_l, 2)
+              return round(current_price_l, dpp)
           # 根据百分比和杠杆调整价格，根据交易方向确定涨跌
           if trade_direction_l == 'BUY':
               current_price_l -= (current_price_l * amplitude_percent_l) * leverage_l
@@ -1625,6 +1630,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
     else:
       # 辅助函数，检查价格变化是否显著
       def is_price_change_significant(current_price, ref_price):
+        global average_short_cost, average_long_cost
         price_change_ratio = abs(current_price - ref_price) / max(current_price, ref_price)
         current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
         significant_change = False
@@ -1647,7 +1653,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
           new_ref_price  = ref_price if (average_short_cost == 0 and average_long_cost == 0) else (average_long_cost if average_short_cost == 0 else average_short_cost)
           if new_ref_price != ref_price:
             ref_price = new_ref_price
-            logger.info(f"价格变化方向不同，更新ref_price为{round(ref_price, 1)}，加多成本{average_long_cost}，加空成本{average_short_cost}")
+            logger.info(f"价格变化方向不同，更新ref_price为{round(ref_price, dpp)}，加多成本{average_long_cost}，加空成本{average_short_cost}")
           if (current_price > ref_price * (1 + FP) and last_order_direction == 'BUY') or \
              (current_price < ref_price * (1 - FP) and last_order_direction == 'SELL'):
               significant_change = True
@@ -1698,7 +1704,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
 def calculate_next_order_parameters(price, leverage):
     global last_order_direction
     try:
-        next_price = round(price * (1 - Slippage if ssbb == 1 else 1 + Slippage), 1)
+        next_price = round(price * (1 - Slippage if ssbb == 1 else 1 + Slippage), dpp)
         reference_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
 
         if reference_price and reference_price != 0 and next_price != reference_price:
@@ -1740,26 +1746,26 @@ def update_order_status(response, position):
       global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position
       if 'price' in response and 'origQty' in response and 'type' in response and 'side' in response:
         update_price = float(response['price'] if response['type'] != 'TRAILING_STOP_MARKET' else response['activatePrice'])
-        quantity = float(response['origQty'])
+        quantity_response = float(response['origQty'])
         logger.info(f"#######################")
         logger.info(f"=======cpo成功===========")
         logger.info(f"#######################")
         logger.info(f"=======================")
         logger.info(f"cpo成功{response['side']}：{update_price}")
-        update_position_cost(update_price, quantity, response['positionSide'], response['side'])
+        update_position_cost(update_price, quantity_response, response['positionSide'], response['side'])
         if response['side'] == 'BUY':
             if last_order_direction == 'SELL':
                 average_short_cost, average_short_position = 0, 0
             else:
-                logger.info(f"类型 - update_price: {type(update_price)}, quantity: {type(quantity)}, average_long_cost: {type(average_long_cost)}, average_long_position: {type(average_long_position)}")
-                logger.info(f"值 - update_price: {update_price}, quantity: {quantity}, average_long_cost: {average_long_cost}, average_long_position: {average_long_position}")
+                logger.info(f"类型 - update_price: {type(update_price)}, quantity_response: {type(quantity_response)}, average_long_cost: {type(average_long_cost)}, average_long_position: {type(average_long_position)}")
+                logger.info(f"值 - update_price: {update_price}, quantity_response: {quantity_response}, average_long_cost: {average_long_cost}, average_long_position: {average_long_position}")
 
-                average_long_cost, average_long_position = (round((average_long_cost * average_long_position + update_price * quantity) / (average_long_position + quantity), 1),(average_long_position + quantity)) if average_long_cost != 0 else (update_price, quantity)
+                average_long_cost, average_long_position = (round((average_long_cost * average_long_position + update_price * quantity_response) / (average_long_position + quantity_response), dpp),(average_long_position + quantity_response)) if average_long_cost != 0 else (update_price, quantity_response)
         else:
             if last_order_direction == 'BUY':
                 average_long_cost, average_long_position = 0, 0
             else:
-                average_short_cost, average_short_position = (round((average_short_cost * average_short_position + update_price * quantity) / (average_short_position + quantity), 1),(average_short_position + quantity)) if average_short_cost != 0 else (update_price, quantity)
+                average_short_cost, average_short_position = (round((average_short_cost * average_short_position + update_price * quantity_response) / (average_short_position + quantity_response), dpp),(average_short_position + quantity_response)) if average_short_cost != 0 else (update_price, quantity_response)
         status_manager.update_status('average_long_cost', average_long_cost)
         status_manager.update_status('average_short_cost', average_short_cost)
         status_manager.update_status('average_long_position', average_long_position)
@@ -1772,10 +1778,10 @@ def update_order_status(response, position):
         elif position in ('ls', 'ss'):
           last_s_order_price = update_price
           last_s_order_orderId = response['orderId']
-          status_manager.update_status('last_s_order_orderId', last_s_order_order)
+          status_manager.update_status('last_s_order_orderId', last_s_order_orderId)
         status_manager.update_status('last_order_price', last_order_price)
         status_manager.update_status('last_s_order_price', last_s_order_price)
-        quantity = float(quantity - min_quantity) * float(martingale) + min_quantity
+        quantity = float(quantity - min_quantity) * float(martingale) + min_quantity  #单位交易量，网格quantity_grid，对冲add_position
         status_manager.update_status('quantity', quantity)
         FP = float(FP) * float(leverage)
         status_manager.update_status('FP', FP)
@@ -1809,7 +1815,7 @@ def update_order_status(response, position):
 # 下单交易
 def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
 
-    global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, client, logger, FP, quantity, last_order_direction
+    global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, client, logger, FP, last_order_direction
     logger.info(f"#######################")
     logger.info(f"=======调用下单========")
     logger.info(f"#########{position}############")
@@ -1829,7 +1835,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
     
     origQty = quantitya
     logger.info(f"下单价格: {price}")
-    price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), 1)
+    price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), dpp)
     logger.info(f"slippage优化下单价格: {price}")
     if origQty <= 0:
         logger.error("下单量必须大于0")
@@ -1860,7 +1866,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
           'side': order_side,
           'positionSide': position_side,
           'type': "TRAILING_STOP_MARKET",
-          'activationPrice': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), 1),
+          'activationPrice': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), dpp),
           'callbackRate': callback,
           'quantity': math.floor(origQty * 1000) / 1000,
           'timeInForce': time_in_force,
@@ -1874,7 +1880,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
           'type': order_type,
           'timeInForce': time_in_force,
           'quantity': math.floor(origQty * 1000) / 1000,
-          'price': round(price, 1),
+          'price': round(price, dpp),
           'priceProtect': False,
           'closePosition': False
       }
@@ -1887,8 +1893,8 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
           'side': order_side,
           'positionSide': position_side,
           'type': "TAKE_PROFIT", # STOP, TAKE_PROFIT
-          'stopPrice': round(price * (1 - 0.005 * callback) if order_side == 'BUY' else price * (1 + 0.005 * callback), 1),
-          'price': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), 1),
+          'stopPrice': round(price * (1 - 0.005 * callback) if order_side == 'BUY' else price * (1 + 0.005 * callback), dpp),
+          'price': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), dpp),
           'quantity': math.floor(origQty * 1000) / 1000,
           'timeInForce': time_in_force,
       }
@@ -1981,7 +1987,7 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
 
         # 检查当前价格是否达到或超过启动价格
         if start_order_price == None and start_price_reached == False:
-          start_order_price = round(optimal_price * (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), 1)
+          start_order_price = round(optimal_price * (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), dpp)
           logger.info(f"启动价为None并未触发则用最佳价格的{add_rate}：{start_order_price}")
 
         if (trade_direction == 'lb' and start_order_price != None and current_price <= start_order_price) or \
@@ -2091,8 +2097,8 @@ def trading_strategy():
       if trading_strategy_enabled == 0:
         logger.info("交易策略未启用")
         return  
-      trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), 1)
-      profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), 1)
+      trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
+      profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
       logger.info(f"-开始对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
       logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
       logger.info(f"-追加幅度：{add_rate}, 单位追加量：{add_position}")
@@ -2139,7 +2145,7 @@ def trading_strategy():
         starta_position = 0
         trade_executed_4 = True
         logger.info(f"动态追踪3{trade_executed_3}，重置交易量,保本止盈4改{trade_executed_4}")
-        starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), 1)
+        starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
       if not trade_executed_4 and breakeven_price_4 != 0:
         logger.info(f"保本止盈4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
         start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, starta_position, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
@@ -2148,15 +2154,17 @@ def trading_strategy():
         starta_position = 0
         trade_executed_3 = True
         logger.info(f"保本止盈4{trade_executed_4}，重置交易量，动态追踪1改{trade_executed_3}")
-        starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), 1)
+        starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
 
       # 价格到达触发点
       if (current_price < trigger_price and starta_direction == 'lb') or (current_price > trigger_price and starta_direction == 'ss'):
-        starta_cost = round(((starta_position * starta_cost + trigger_price * add_position) / (starta_position + add_position)), 1)  # 更新启动成本
+        logger.info(f"Types: starta_position: {type(starta_position)}, starta_cost: {type(starta_cost)}, trigger_price: {type(trigger_price)}, add_position: {type(add_position)}")
+
+        starta_cost = round(((starta_position * starta_cost + trigger_price * add_position) / (starta_position + add_position)), dpp)  # 更新启动成本
         starta_price = current_price  # 更新启动价格
         breakeven_price_2 = trigger_price # 更新保本价格
-        trigger_price = round(starta_price * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), 1) # 更新追加价格
-        profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), 1)  # 更新止盈价格
+        trigger_price = round(starta_price * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp) # 更新追加价格
+        profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)  # 更新止盈价格
         add_position_1 += add_position # 更新交易量
         logger.info(f"更新启动价格：{starta_price}, 启动成本：{starta_cost}")
         logger.info(f"更新追加价格：{trigger_price}, 止盈价格：{profit_price}")
@@ -2173,8 +2181,6 @@ def trading_strategy():
            (starta_direction == 'ss' and current_price > optimal_price_1):
             optimal_price_1 = current_price  # 更新最佳价格
             logger.info(f"更新最佳价格：{optimal_price_1}")
-
-          add_position_1 += add_position
           start_price_reached_1 = False
           start_price_reached_2 = False
           trade_executed_1 = False
@@ -2222,12 +2228,12 @@ def trading_strategy():
           if trade_executed_3 and starta_position != 0:
             starta_position = 0
             trade_executed_4 = True
-            starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), 1)
+            starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
           start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, starta_position, start_order_price=profit_price, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
           if trade_executed_4 and starta_position != 0:
             starta_position = 0
             trade_executed_3 = True
-            starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), 1)
+            starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
           logger.info("达到止盈点，动态保本...")
 
       status_manager.update_status('trade_executed_1', trade_executed_1)
