@@ -2119,6 +2119,7 @@ def trading_strategy():
       }
       score = calculate_score(conditions_enabled)
       add_direction = 'lb'if starta_direction == 'ss' else 'ss'
+      profit_position =  starta_position - add_position  # 止盈量
       if not trade_executed_1 and add_position_1 != 0:
         logger.info(f"动态追踪1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}")
         start_price_reached_1, trade_executed_1, optimal_price_1 = dynamic_tracking(symbol, starta_direction, add_rate, optimal_price_1, add_position_1, start_price_reached=start_price_reached_1, trade_executed = trade_executed_1)
@@ -2139,7 +2140,7 @@ def trading_strategy():
         logger.info(f"保本止盈2{trade_executed_2}，重置交易量，动态追踪1改{trade_executed_1}")
       if not trade_executed_3 and starta_position != 0:
         logger.info(f"动态追踪3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
-        start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, starta_position, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
+        start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, profit_position, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
         logger.info(f"动态追踪3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
       if trade_executed_3 and starta_position != 0:
         starta_position = 0
@@ -2148,7 +2149,7 @@ def trading_strategy():
         starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
       if not trade_executed_4 and breakeven_price_4 != 0:
         logger.info(f"保本止盈4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
-        start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, starta_position, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
+        start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, profit_position, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
         logger.info(f"保本止盈4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
       if trade_executed_4 and starta_position != 0:
         starta_position = 0
@@ -2209,7 +2210,7 @@ def trading_strategy():
         starta_position = add_position
         if (starta_direction == 'lb' and score <= -ts_threshold) or \
          (starta_direction == 'ss' and score >= ts_threshold):
-          if place_limit_order(symbol, starta_direction, profit_price, starta_position, callback):
+          if place_limit_order(symbol, starta_direction, profit_price, profit_position, callback):
             starta_position = 0
             trade_executed_3 = True
             trade_executed_4 = True
@@ -2224,12 +2225,12 @@ def trading_strategy():
           breakeven_price_4 = current_price
           start_price_reached_3 = False
           start_price_reached_4 = False
-          start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, starta_position,start_order_price=profit_price, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
+          start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, profit_position,start_order_price=profit_price, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
           if trade_executed_3 and starta_position != 0:
             starta_position = 0
             trade_executed_4 = True
             starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
-          start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, starta_position, start_order_price=profit_price, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
+          start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, profit_position, start_order_price=profit_price, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
           if trade_executed_4 and starta_position != 0:
             starta_position = 0
             trade_executed_3 = True
