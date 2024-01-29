@@ -1595,6 +1595,12 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
             raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
           # 检查亏损是否超过初始保证金
           if loss_l > initial_margin_l:
+              if max_position_size != round((total_quantity_l / 5),2):
+                logger.info(f"风控仓位:{max_position_size}")
+                max_position_size = round((total_quantity_l / 5),2)
+                logger.info(f"风控仓位调至{max_position_size}")
+                status_manager.update_status('max_position_size', max_position_size)  
+              logger.info(f"最大头寸为{max_position_size}")
               logger.info(f"{loss_l:.2f} > {initial_margin_l:.2f}")
               logger.info(f"头寸{total_quantity_l:.2f}")
               return round(current_price_l, 2)
@@ -2408,7 +2414,7 @@ async def main_loop():
 
 
           
-    #        beta() #测试代码
+     #       beta() #测试代码
 
 
           
