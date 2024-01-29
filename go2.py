@@ -93,7 +93,7 @@ def load_json_file(file_name, default_value=None):
           else:
               logger.error(f"不支持的文件格式: {file_path}")
   except FileNotFoundError:
-      logger.error(f"{file_path} 文件未找到。")
+      logger.error(f"{file_path} 文件没找到。")
   except (json.JSONDecodeError, yaml.YAMLError) as e:
       logger.error(f"解析 {file_path} 时出现解码错误: {e}")
   except Exception as e:
