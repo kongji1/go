@@ -1596,11 +1596,10 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
           # 检查亏损是否超过初始保证金
           if loss_l > initial_margin_l:
               if max_position_size != round((total_quantity_l / 5),2):
-                logger.info(f"风控仓位:{max_position_size}")
+                logger.info(f"原风控仓位:{max_position_size}")
                 max_position_size = round((total_quantity_l / 5),2)
-                logger.info(f"风控仓位调至{max_position_size}")
                 status_manager.update_status('max_position_size', max_position_size)  
-              logger.info(f"最大头寸为{max_position_size}")
+              logger.info(f"风控仓位{max_position_size}")
               logger.info(f"{loss_l:.2f} > {initial_margin_l:.2f}")
               logger.info(f"头寸{total_quantity_l:.2f}")
               return round(current_price_l, 2)
@@ -1638,9 +1637,17 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
               significant_change = True
               logger.info(f"{ref_price}追{current_order_direction}{current_price}")
         else:
-          ref_price = ref_price if (average_short_cost == 0 and average_long_cost == 0) else (average_long_cost if average_short_cost == 0 else average_short_cost)
-
-          logger.info(f"价格变化方向不同，更新ref_price为{round(ref_price, 1)}，加多成本{average_long_cost}，加空成本{average_short_cost}")
+          if average_short_cost == 0 and average_long_cost == 0:
+            if last_order_direction == 'BUY':
+              average_long_cost = ref_price
+              logger.info(f"初始化最近多单成本{average_long_cost}")
+            else:
+              average_short_cost = ref_price
+              logger.info(f"初始化最近空单成本{average_long_cost}")
+          new_ref_price  = ref_price if (average_short_cost == 0 and average_long_cost == 0) else (average_long_cost if average_short_cost == 0 else average_short_cost)
+          if new_ref_price != ref_price:
+            ref_price = new_ref_price
+            logger.info(f"价格变化方向不同，更新ref_price为{round(ref_price, 1)}，加多成本{average_long_cost}，加空成本{average_short_cost}")
           if (current_price > ref_price * (1 + FP) and last_order_direction == 'BUY') or \
              (current_price < ref_price * (1 - FP) and last_order_direction == 'SELL'):
               significant_change = True
