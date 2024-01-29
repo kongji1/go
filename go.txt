@@ -1,46 +1,70 @@
 is_paused = False
 #is_paused = True
+
 # 交易和市场相关参数
-profit1 = 0.01  # 利润参数1，用于计算和设置盈利目标
-profit2 = 0.02  # 利润参数2，通常设定为小于 profit1 的值
-Trailing_take_profit = 0.005  # 追踪止盈比例，例如 0.005 表示追踪止盈为0.5%
-Slippage = 0.004  # 滑点，callbalck(%)=100slippage
-callback = 100 * Slippage  # 回调比例，例如 100 * Slippage 表示回调为100倍滑点
+def set_trade_and_market_params():
+    global profit1, profit2, Trailing_take_profit, Slippage, callback
+    profit1 = 0.01
+    profit2 = 0.002
+    Trailing_take_profit = 0.005
+    Slippage = 0.002
+    callback = 100 * Slippage
 
 # 量化交易和策略参数
-leverage = 1.01  # 杠杆倍数，用于放大交易头寸
-interval_ssbb = "15m"  # 趋势K线周期，例如 '5m' 表示5分钟
-interval = "3m"  # 震荡K线周期，例如 '5m' 表示5分钟
-limit = 960  # 限制获取市场数据时的数据点数量
-limit_test = 1344  # 回测获取市场数据时的数据点数量
-martingale = 1.01  # 马丁格尔策略倍数，用于在损失后增加投资量
-pmom = 66  # 正动量阈值，用于判断市场趋势
-nmom = 30  # 负动量阈值，用于判断市场趋势
-ssbb_logic_enabled = 1  # ssbb 和 sbsb 逻辑开关
-price_change_enabled = 1  # 价格变化逻辑开关
-cost_price_logic_enabled = 1  # 成本和价格逻辑开关
-technical_indicators_enabled = 1  # 震荡技术指标逻辑开关
-macd_signal_enabled = 1  # 趋势MACD信号逻辑开关
-trading_strategy_enabled = 1 # 追加对冲策略开关
+def set_quantitative_strategy_params():
+    global leverage, interval_ssbb, interval, limit, limit_test, martingale, pmom, nmom, ssbb_logic_enabled, \
+    price_change_enabled, cost_price_logic_enabled, technical_indicators_enabled, macd_signal_enabled, \
+    trading_strategy_enabled
+    leverage = 1.01
+    interval_ssbb = "15m"
+    interval = "3m"
+    limit = 960
+    limit_test = 1344
+    martingale = 1.01
+    pmom = 66
+    nmom = 30
+    ssbb_logic_enabled = 1
+    price_change_enabled = 1
+    cost_price_logic_enabled = 1
+    technical_indicators_enabled = 1
+    macd_signal_enabled = 1
+    trading_strategy_enabled = 1
 
 # 订单和仓位管理相关参数
-min_quantity = 0.01  # 最小下单量
-step_size = 0.001  # 订单量调整的步长
-max_position_size = 0.1  # 允许的最大持仓量，用于风险控制
-force_reduce = 0  # 是否启用强制减仓，0 表示不启用
+def set_order_and_position_params():
+    global min_quantity, step_size, max_position_size, force_reduce
+    min_quantity = 0.01
+    step_size = 0.001
+    max_position_size = 0.1
+    force_reduce = 0
 
 # 程序运行和性能参数
-max_run_time = 60 * 60 * 24 * 7  # 最大运行时间，以秒为单位
-monitoring_interval = 60  # 监测策略条件成立的时间间隔（秒）
-order_interval = 60  # 下单操作的时间间隔（秒）
-update_interval = 60  # 更新价格的时间间隔（秒）
-ltime = 55  # 循环限速时间（秒）
-stime = 550  # 交易操作的频率（秒）
+def set_program_performance_params():
+    global max_run_time, monitoring_interval, order_interval, update_interval, ltime, stime
+    max_run_time = 60 * 60 * 24 * 7
+    monitoring_interval = 60
+    order_interval = 60
+    update_interval = 60
+    ltime = 55
+    stime = 550
 
-#追加策略
-#starta_direction = 'lb'
-#add_position = min_quantity
-#add_rate = 0.006
-#ts_threshold = 50 #分数阈值
+# 追加策略相关参数
+def set_additional_strategy_params():
+    global starta_direction, add_position, add_rate, ts_threshold
+    starta_direction = 'lb'
+    add_position = min_quantity
+    add_rate = 0.006
+    ts_threshold = 50
 
-logger.info("配置加载成功")
+# 配置加载
+def load_configuration():
+    logger.info("配置加载成功")
+
+# 示例用法
+if __name__ == "__main__":
+ #   set_trade_and_market_params()
+#    set_quantitative_strategy_params()
+    #set_order_and_position_params()
+   # set_program_performance_params()
+  #  set_additional_strategy_params()
+    load_configuration()
