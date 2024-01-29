@@ -2408,7 +2408,7 @@ async def main_loop():
 
 
           
-            beta() #测试代码
+    #        beta() #测试代码
 
 
           
