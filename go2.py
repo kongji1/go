@@ -14,11 +14,11 @@ from bs4 import BeautifulSoup
 from ruamel.yaml import YAML
 import subprocess  # 用于执行外部命令
 import math  # 用于数学计算
-import pytz  # 导入 pytz 模块0
+import pytz  # 导入 pytz 模块
 import aiohttp
 import ssl
 import asyncio
-import copy #深度拷贝1234
+import copy #深度拷贝
 import traceback
 import yaml
 
@@ -93,7 +93,7 @@ def load_json_file(file_name, default_value=None):
           else:
               logger.error(f"不支持的文件格式: {file_path}")
   except FileNotFoundError:
-      logger.error(f"{file_path} 文件没找到。")
+      logger.error(f"{file_path} 文件未找到。")
   except (json.JSONDecodeError, yaml.YAMLError) as e:
       logger.error(f"解析 {file_path} 时出现解码错误: {e}")
   except Exception as e:
@@ -423,7 +423,8 @@ status_manager = StatusManager('status.yaml', symbol, save_interval=60)
 min_price_step = status_manager.get_status('min_price_step', 0.001)
 dpp = len(str(min_price_step).split('.')[1]) if '.' in str(min_price_step) else 0 #decimal_places最小价格步长的小数位数
 min_quantity = status_manager.get_status('min_quantity', 0.01)
-dpq = len(str(min_price_step).split('.')[1]) if '.' in str(min_price_step) else 0 #decimal_places最小交易量的精度
+dpq = len(str(min_quantity).split('.')[1]) if '.' in str(min_quantity) else 0 #decimal_places最小交易量的精度
+max_position_size = status_manager.get_status('max_position_size', 0.1)
 starta_direction = status_manager.get_status('starta_direction', 'lb')
 add_rate = status_manager.get_status('add_rate', 0.02)  # 追加仓位的跨度
 ts_threshold = status_manager.get_status('ts_threshold', 75) #分数阈值
@@ -1600,13 +1601,13 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
             raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
           # 检查亏损是否超过初始保证金
           if loss_l > initial_margin_l:
-              if max_position_size != round((total_quantity_l / 5),dpq):
+              if max_position_size != round((total_quantity_l / 4),dpq):
                 logger.info(f"原风控仓位:{max_position_size}")
-                max_position_size = round((total_quantity_l / 5),dpq)
+                max_position_size = round((total_quantity_l / 4),dpq)
                 status_manager.update_status('max_position_size', max_position_size)  
               logger.info(f"风控仓位{max_position_size}")
-              logger.info(f"{loss_l:.2f} > {initial_margin_l:.2f}")
-              logger.info(f"头寸{total_quantity_l:.2f}")
+              logger.info(f"{loss_l:.{dpq}f} > {initial_margin_l:.{dpq}f}")
+              logger.info(f"头寸{total_quantity_l:.{dpq}f}")
               return round(current_price_l, dpp)
           # 根据百分比和杠杆调整价格，根据交易方向确定涨跌
           if trade_direction_l == 'BUY':
@@ -1704,7 +1705,8 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
 def calculate_next_order_parameters(price, leverage):
     global last_order_direction
     try:
-        next_price = round(price * (1 - Slippage if ssbb == 1 else 1 + Slippage), dpp)
+    #    next_price = round(price * (1 - Slippage if ssbb == 1 else 1 + Slippage), dpp)
+        next_price = round(price, dpp)  #
         reference_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
 
         if reference_price and reference_price != 0 and next_price != reference_price:
@@ -1716,9 +1718,9 @@ def calculate_next_order_parameters(price, leverage):
         else:
           grid_count = 0 #差异小于阈值FP
           logger.info(f"差异小于阈值FP: {grid_count}\n")
-        if grid_count > 6:
+        if grid_count > 10:
           logger.info(f"grid:{grid_count}/{grid_ratio}/{1 + FP}")
-          grid_count = 6
+          grid_count = 10
         # 根据网格数量调整下单量
         origQty = adjust_quantity(quantity_grid * grid_count)
 
@@ -1791,8 +1793,8 @@ def update_order_status(response, position):
         logger.info(
             "\n" + "=" * 50 +
             f"\n== 订单时间: {time_str} " + " " * (30 - len(time_str)) + "==\n" +
-            f"== 当前价格: {current_price:.2f} " + " " * (37 - len(str(current_price))) + "==\n" +
-            f"== 数量: {response['origQty']} | 方向: {position} | 价格: {update_price:.2f} " + " " * (10 - len(str(update_price)) - len(str(response['origQty'])) - len(position)) + "==\n" +
+            f"== 当前价格: {current_price:.{dpp}f} " + " " * (37 - len(str(current_price))) + "==\n" +
+            f"== 数量: {response['origQty']} | 方向: {position} | 价格: {update_price:.{dpp}f} " + " " * (10 - len(str(update_price)) - len(str(response['origQty'])) - len(position)) + "==\n" +
             f"== 订单ID: {response['orderId']} " + " " * (40 - len(str(response['orderId']))) + "==\n" +
             "=" * 50 + "\n"
         )
@@ -1860,19 +1862,21 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
     order_side, position_side = determine_order_side()
 
     def create_trailing_stop_order_params(order_side, position_side, price, callback, origQty):
-      logger.info(f"动态追踪优化激活价格: {price}*0.02 * callback")
+      logger.info(f"动态追踪{order_side}优化激活价格: {price}*0.02 * callback")
+     # 'activationPrice': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), dpp),
       return {
           'symbol': symbol,
           'side': order_side,
           'positionSide': position_side,
           'type': "TRAILING_STOP_MARKET",
-          'activationPrice': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), dpp),
+          'activationPrice': round(price, dpp),
           'callbackRate': callback,
           'quantity': math.floor(origQty * 1000) / 1000,
           'timeInForce': time_in_force,
       }
 
     def create_standard_order_params(order_side, position_side, price, origQty):
+      logger.info(f"限价单{order_side}: {price}")
       return {
           'symbol': symbol,
           'side': order_side,
@@ -1886,28 +1890,32 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
       }
 
     def create_take_profit_order_params(order_side, position_side, price, origQty):
-      logger.info(f"止盈单优化止盈激活价格: {price}*0.005 * callback")
-      logger.info(f"止盈单优化止盈价格: {price}*0.02 * callback")
+      logger.info(f"止盈单{order_side}优化止盈激活价格: {price}*0.005 * callback")
+      logger.info(f"止盈单{order_side}优化止盈价格: {price}*0.02 * callback")
       return {
           'symbol': symbol,
           'side': order_side,
           'positionSide': position_side,
           'type': "TAKE_PROFIT", # STOP, TAKE_PROFIT
-          'stopPrice': round(price * (1 - 0.005 * callback) if order_side == 'BUY' else price * (1 + 0.005 * callback), dpp),
-          'price': round(price * (1 - 0.02 * callback) if order_side == 'BUY' else price * (1 + 0.02 * callback), dpp),
+          'stopPrice': round(price, dpp),
+          'price': round((price - (min_price_step * 2 )) if order_side == 'BUY' else (price + (min_price_step * 2 )), dpp),
           'quantity': math.floor(origQty * 1000) / 1000,
           'timeInForce': time_in_force,
       }
 
-    if order_side == 'none':
-        logger.error("order_side为none，停止下单")
-        return
-    if (order_side == 'BUY' and position_side == 'SHORT') or (order_side == 'SELL' and position_side == 'LONG'):
-      order_params = create_trailing_stop_order_params(order_side, position_side, price, callback, origQty)
-    else:
-      order_params = create_standard_order_params(order_side, position_side, price, origQty)
-
     try:
+        if order_side == 'none':
+          logger.error("order_side为none，停止下单")
+          return
+        if (order_side == 'BUY' and short_position > origQty) or (order_side == 'SELL' and long_position > origQty):
+          logger.info(f"限价止盈平仓")
+          order_params = create_take_profit_order_params(order_side, position_side, price, origQty)
+        elif (order_side == 'BUY' and position_side == 'SHORT') or (order_side == 'SELL' and position_side == 'LONG'):
+          logger.info(f"动态追踪平仓")
+          order_params = create_trailing_stop_order_params(order_side, position_side, price, callback, origQty)
+        else:
+          logger.info(f"限价开仓")
+          order_params = create_standard_order_params(order_side, position_side, price, origQty)
         current_time, time_str = get_current_time()  # 获取时间和时间字符串
         current_price, last_price_update_time = get_current_price(symbol, now=1)
         get_binance_server_time()
@@ -2427,7 +2435,7 @@ async def main_loop():
             current_status()
 
 
-          
+            
      #       beta() #测试代码
 
 
@@ -2446,17 +2454,23 @@ async def main_loop():
             # 记录完整的堆栈跟踪
             logger.error(f"堆栈跟踪: {traceback.format_exc()}")
             logger.info(f"暂停10,{monitoring_interval}")
-            await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟0
+            await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
 
 def beta():
+  script_path = os.path.join(BASE_PATH, '112.ps1')
+  if not os.path.isfile(script_path):
+    logger.info(f"脚本文件 {script_path} 不存在，开始测试")
+    position = 'lb'
+    price1,_ = get_current_price(symbol) 
+    price = (price1 * 0.8) if position == 'lb' else (price1 * 1.2)
+    quantitya = min_quantity
+    callback = 0.1
+    place_limit_order(symbol, position, price1, quantitya, callback)
+  else:
+    logger.info(f"脚本文件 {script_path} 存在，终止测试")
+    return
   # place_limit_order(symbol, position, price, quantitya, callback)
-  symbol = 'ETHUSDT'
-  position = 'lb'
-  price1,_ = get_current_price(symbol) 
-  price = price1 - 1
-  quantitya = min_quantity
-  callback = 0.1
-  place_limit_order(symbol, position, price, quantitya, callback)
+  #symbol = 'ETHUSDT'
   logger.info(f"\n/nbbbbbeeeeettttttaaaaa")
 logger = None
 def run_main_loop():
@@ -2486,3 +2500,4 @@ def run_main_loop():
 
 if __name__ == "__main__":
     run_main_loop()
+
