@@ -686,6 +686,7 @@ def update_position_cost(price, quantity_upc, position_side, operation_type):
 
 # 获取当前仓位状态
 def current_status():
+    global net_cost, starta_cost, starta_direction
     try:
         # 构建最近订单信息
         last_order_info = []
@@ -700,13 +701,22 @@ def current_status():
         cost_info = f"-多头成本: {float(long_cost):.{dpp}f}" if long_cost is not None else "None"
         cost_info += f", 空头成本: {float(short_cost):.{dpp}f}" if short_cost is not None else ", None"
         position_info = f"-多头持仓量: {round(long_position, dpq)}, 空头持仓量: {round(short_position, dpq)}"
-
+        # 计算净持仓量
+        net_position = (long_position - short_position) if abs(long_position - short_position) > quantity_grid else quantity_grid
+        net_cost1 = (short_cost - long_cost) * min(long_position , short_position)
+        # 计算净成本
+        net_cost = round((long_cost - (net_cost1 / net_position)) if long_cost > short_cost else ((short_cost + (net_cost1 / net_position)) if short_cost > long_cost else (current_price - (net_cost1 / net_position))), dpp)
+     #   net_cost = (short_cost * short_position - long_cost * long_position) / net_position
+        starta_cost = net_cost
+        starta_direction = "lb" if long_position >= short_position else "ss"
+        net_info = f"-净持仓量: {round(net_position, dpq)}, 净成本: {round(net_cost, dpp)}"
         # 最近side和余额
         side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.{dpp}f}, 余额: {float(floating_margin):.{dpp}f}" if floating_margin is not None else "None"
         logger.info(side_and_balance)
         logger.info(last_order_info)
         logger.info(cost_info)
         logger.info(position_info)
+        logger.info(net_info)
 
         # 状态信息
 #        status_message = "\n".join([
@@ -1618,9 +1628,9 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
               raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
 
     # 示例使用
-    
 
-        
+
+
   # 网格思路预筛
     score_threshold = 50 #设置阈值
         # 首先检查分数是否达到阈值
@@ -1693,7 +1703,7 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
       logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
       logger.info(f"价格变化比：{price_change_ratio:.2%}")
       logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
-    
+
     # 确定是否更新 ssbb
     if temp_ssbb != ssbb:
         temp_ssbb = ssbb  # 更新临时变量
@@ -1834,11 +1844,22 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
       return
     if callback < Slippage * 100:
       callback = min(Slippage * 100, 0.4)
-    
+
     origQty = quantitya
     logger.info(f"下单价格: {price}")
-    price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), dpp)
-    logger.info(f"slippage优化下单价格: {price}")
+    price_is_special = price in ["OPPONENT", "OPPONENT_5", "OPPONENT_10", "OPPONENT_20",
+                         "QUEUE", "QUEUE_5", "QUEUE_10", "QUEUE_20"]
+    if not price_is_special:
+      try:
+        if float(price) > 0:
+          price = round(price * (1 - Slippage if position == 'lb' else 1 + Slippage), dpp)
+          logger.info(f"slippage优化下单价格: {price}")
+        elif float(price) > 0:
+          logging.error(f"无效的price：{price}")
+          return
+      except ValueError:
+        logger.error(f"无效的价格值：{price}")
+        return
     if origQty <= 0:
         logger.error("下单量必须大于0")
         return NONE
@@ -1903,19 +1924,39 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
           'timeInForce': time_in_force,
       }
 
+    def create_match_order_params(order_side, position_side, price, origQty):
+      logger.info(f"限价单{order_side}: {price}")
+      return {
+          'symbol': symbol,
+          'side': order_side,
+          'positionSide': position_side,
+          'type': order_type,
+          'timeInForce': time_in_force,
+          'quantity': math.floor(origQty * 1000) / 1000,
+          'priceMatch': price,
+        #"OPPONENT"、"OPPONENT_5"、"OPPONENT_10"、"OPPONENT_20"、"QUEUE"、"QUEUE_5"、"QUEUE_10"、"QUEUE_20"
+          'priceProtect': False,
+          'closePosition': False
+      }
+  
+
     try:
         if order_side == 'none':
           logger.error("order_side为none，停止下单")
           return
-        if (order_side == 'BUY' and short_position > origQty) or (order_side == 'SELL' and long_position > origQty):
-          logger.info(f"限价止盈平仓")
-          order_params = create_take_profit_order_params(order_side, position_side, price, origQty)
-        elif (order_side == 'BUY' and position_side == 'SHORT') or (order_side == 'SELL' and position_side == 'LONG'):
-          logger.info(f"动态追踪平仓")
-          order_params = create_trailing_stop_order_params(order_side, position_side, price, callback, origQty)
+        if price_is_special:
+            logger.info(f"匹配订单参数")
+            order_params = create_match_order_params(order_side, position_side, price, origQty)
         else:
-          logger.info(f"限价开仓")
-          order_params = create_standard_order_params(order_side, position_side, price, origQty)
+            if (order_side == 'BUY' and short_position > origQty) or (order_side == 'SELL' and long_position > origQty):
+              logger.info(f"限价止盈平仓")
+              order_params = create_take_profit_order_params(order_side, position_side, price, origQty)
+            elif (order_side == 'BUY' and position_side == 'SHORT') or (order_side == 'SELL' and position_side == 'LONG'):
+              logger.info(f"动态追踪平仓")
+              order_params = create_trailing_stop_order_params(order_side, position_side, price, callback, origQty)
+            else:
+              logger.info(f"限价开仓")
+              order_params = create_standard_order_params(order_side, position_side, price, origQty)
         current_time, time_str = get_current_time()  # 获取时间和时间字符串
         current_price, last_price_update_time = get_current_price(symbol, now=1)
         get_binance_server_time()
@@ -2099,12 +2140,14 @@ def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quanti
     return False, True
 
 def trading_strategy():
+  # starta_cost启动成本咱改为从current_status获取
     global starta_price, starta_position, starta_cost, trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4, add_position_1
     logger.info("******** 对冲系统 ********")
     try:
       if trading_strategy_enabled == 0:
         logger.info("交易策略未启用")
         return  
+      
       trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
       profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
       logger.info(f"-开始对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
@@ -2428,18 +2471,19 @@ async def main_loop():
               current_price, last_price_update_time = get_current_price(symbol)
               order_price, origQty = calculate_next_order_parameters(current_price, leverage)
               order_position = 'lb' if ssbb == 1 else 'ss'
-              response = place_limit_order(symbol, order_position, order_price, origQty, 100 * Slippage)
+        #      response = place_limit_order(symbol, order_position, order_price, origQty, 100 * Slippage)
+              response = place_limit_order(symbol, order_position, 'QUEUE', origQty, 100 * Slippage)
               if response:
                 update_order_status(response, order_position)
                 logger.info(f"网格系统下单成功")
             current_status()
 
 
-            
-     #       beta() #测试代码
+
+       #     beta() #测试代码
 
 
-          
+
             logger.info(f"暂停9,{monitoring_interval}")
             await asyncio.sleep(monitoring_interval)  # 等待一分钟
             if current_time.minute % 2 == 1:
@@ -2465,6 +2509,7 @@ def beta():
     price = (price1 * 0.8) if position == 'lb' else (price1 * 1.2)
     quantitya = min_quantity
     callback = 0.1
+#    place_limit_order(symbol, position, 'QUEUE_3', quantitya, callback)
     place_limit_order(symbol, position, price1, quantitya, callback)
   else:
     logger.info(f"脚本文件 {script_path} 存在，终止测试")
