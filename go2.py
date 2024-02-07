@@ -1835,7 +1835,9 @@ def update_order_status(response, position):
         quantity = float(quantity - min_quantity) * float(martingale) + min_quantity  #单位交易量，网格quantity_grid，对冲add_position
         status_manager.update_status('quantity', quantity)
         FP = float(FP) * float(leverage)
+        add_rate = float(add_rate) * float(leverage)
         status_manager.update_status('FP', FP)
+        status_manager.update_status('add_rate', add_rate)
         last_order_direction = response['side']
         status_manager.update_status('last_order_direction', last_order_direction)
         time_str = current_time.strftime("%H:%M:%S")  # 格式化时间字符串
