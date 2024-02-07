@@ -2064,12 +2064,12 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
     global current_price, add_position_1
     try:
         logger.info(f"****** 动态追{trade_direction} ******")
-        logger.info(f"触发{start_order_price}:{start_price_reached}成交{trade_executed}回调率{callback_rate}最佳{optimal_price}量{trade_quantity}")
+        logger.info(f"触发{start_order_price}:{start_price_reached}成交{trade_executed}回调率{round(callback_rate, dpp)}最佳{optimal_price}量{trade_quantity}")
         # 参数校验
         if trade_direction not in ['lb', 'ss']:
           raise ValueError(f"交易方向{trade_direction}必须是 'lb' 或 'ss'")
         if not all(isinstance(x, (int, float)) and x > 0 for x in [callback_rate, optimal_price, trade_quantity]):
-          raise ValueError(f"回调率{callback_rate}、最佳价格{optimal_price}和交易数量{trade_quantity}必须是正数")
+          raise ValueError(f"回调率{round(callback_rate, dpp)}、最佳价格{optimal_price}和交易数量{trade_quantity}必须是正数")
         if start_order_price is not None and not isinstance(start_order_price, (int, float)):
           raise ValueError(f"启动价格{start_order_price}必须是数字")
         if trade_executed == True:
@@ -2284,7 +2284,7 @@ def trading_strategy():
           trade_executed_1 = False
           trade_executed_2 = False
           start_price_reached_1,trade_executed_1, optimal_price_1 = dynamic_tracking(symbol, starta_direction, add_rate, optimal_price_1, add_position_1, start_order_price=trigger_price, start_price_reached=start_price_reached_1, trade_executed = trade_executed_1)
-          logger.info(f"新对冲单，动态追踪最佳价格{optimal_price_1}，回调率 {add_rate}")
+          logger.info(f"新对冲单，动态追踪最佳价格{optimal_price_1}，回调率 {round(add_rate, dpp)}")
           if trade_executed_1 and add_position_1 != 0:
             starta_position += add_position_1  # 更新持仓量
             add_position_1 = 0
