@@ -20,7 +20,6 @@ import ssl
 import asyncio
 import copy #深度拷贝
 import traceback
-import yaml
 
 # 调用保持连接函数
 keeplive()
@@ -204,7 +203,7 @@ class StatusManager:
         self.status[key] = value
         #print(f"更新状态: {key} = {value}")
         self.reset_save_timer()
-      
+
     def save_status(self):
         temp_file_path = self.file_path + ".tmp"
         try:
@@ -222,7 +221,7 @@ class StatusManager:
                 print("状态已成功保存")
                 if self.logger:
                     self.logger.info("状态已保存到文件: " + self.trading_pair)
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"保存状态到文件时出错: {e}")
@@ -1503,8 +1502,21 @@ def c_ssbb(interval):
         logger.error(f"计算v_ssbb时出错: {e}")
         return pd.Series(), pd.Series()
 
+score_cache = {
+    'last_score': None,
+    'last_calc_period': None
+}
+
 def calculate_score(conditions_enabled):
-  global temp_ssbb
+  global temp_ssbb, score_cache
+  current_time = datetime.now()
+  # 计算当前时间所在的3分钟周期
+  current_period = (current_time.hour * 60 + current_time.minute) // 1
+
+  # 检查是否在新的一分钟内第一次调用
+  if score_cache['last_calc_period'] is not None and score_cache['last_calc_period'] == current_period:
+      return score_cache['last_score']
+
   data = kline_data_cache[interval]
   if not data:
       logger.error("无K线数据")
@@ -1565,6 +1577,8 @@ def calculate_score(conditions_enabled):
       if is_enabled and condition:
           score += score_value
           logger.info(f" -{log_message}")
+  score_cache['last_score'] = score
+  score_cache['last_calc_period'] = current_period
   return score
 
 stop_loss_limit = 0.02  # 停损价格阈值
@@ -1954,7 +1968,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
           'priceProtect': False,
           'closePosition': False
       }
-  
+
 
     try:
         if order_side == 'none':
@@ -2163,7 +2177,7 @@ def trading_strategy():
       if trading_strategy_enabled == 0:
         logger.info("交易策略未启用")
         return  
-      
+
       trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
       profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
       logger.info(f"-开始对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
