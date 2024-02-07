@@ -205,33 +205,48 @@ class StatusManager:
         self.reset_save_timer()
 
     def save_status(self):
+        backup_file_path = self.file_path + ".bak"
         temp_file_path = self.file_path + ".tmp"
+        
         try:
-            # 读取现有状态
-            with open(self.file_path, 'r', encoding='utf-8') as file:
-                all_statuses = self.yaml.load(file) or {}
+            # 创建状态文件的备份
+            if os.path.exists(self.file_path):
+                os.replace(self.file_path, backup_file_path)
+            
+            # 读取现有状态或初始化空状态
+            all_statuses = {}
+            if os.path.exists(backup_file_path):
+                with open(backup_file_path, 'r', encoding='utf-8') as backup_file:
+                    all_statuses = self.yaml.load(backup_file) or {}
+            
+            # 更新当前交易对的状态
             all_statuses[self.trading_pair] = self.status
-
+            
+            # 先将更新写入临时文件
             with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
                 self.yaml.dump(all_statuses, temp_file)
 
-            # 重命名临时文件为正式文件
-            if os.path.exists(temp_file_path):
-                os.replace(temp_file_path, self.file_path)
-                print("状态已成功保存")
-                if self.logger:
-                    self.logger.info("状态已保存到文件: " + self.trading_pair)
+            # 重命名临时文件为正式文件，确保写入的原子性
+            os.replace(temp_file_path, self.file_path)
+            if self.logger:
+                self.logger.info("状态已保存到文件: " + self.trading_pair)
+                
+            # 状态保存成功后，删除备份文件
+            if os.path.exists(backup_file_path):
+                os.remove(backup_file_path)
 
         except Exception as e:
             if self.logger:
                 self.logger.error(f"保存状态到文件时出错: {e}")
-            # 如果可能，尝试恢复旧文件
-            if os.path.exists(temp_file_path):
-                os.replace(temp_file_path, self.file_path)
+            # 如果出现错误，尝试从备份恢复
+            if os.path.exists(backup_file_path):
+                os.replace(backup_file_path, self.file_path)
                 if self.logger:
-                    self.logger.info("已恢复到上一个状态文件版本")
+                    self.logger.info("已从备份中恢复到上一个状态文件版本")
+
         finally:
             self.init_save_timer()
+
 
     def init_save_timer(self):
       self.save_timer = threading.Timer(self.save_interval, self.save_status)
@@ -1649,10 +1664,6 @@ def calculate_composite_score(current_price, last_order_price, last_s_order_pric
               current_price_l += (current_price_l * amplitude_percent_l) * leverage_l
           else:
               raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
-
-    # 示例使用
-
-
 
   # 网格思路预筛
     score_threshold = 50 #设置阈值
