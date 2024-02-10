@@ -20,6 +20,7 @@ import ssl
 import asyncio
 import copy #深度拷贝
 import traceback
+from atomicwrites import atomic_write
 
 # 调用保持连接函数
 keeplive()
@@ -188,6 +189,9 @@ class StatusManager:
 
     def load_status(self):
         try:
+            if not os.path.exists(self.file_path):
+              if os.path.exists(self.file_path + ".bak"):
+                  os.rename(self.file_path + ".bak", self.file_path)
             with open(self.file_path, 'r', encoding='utf-8') as file:
                 all_statuses = self.yaml.load(file) or {}
                 return all_statuses.get(self.trading_pair, {})
@@ -200,9 +204,10 @@ class StatusManager:
         return self.status.get(key, default)
 
     def update_status(self, key, value):
-        self.status[key] = value
+        if self.status.get(key) != value:
+          self.status[key] = value
         #print(f"更新状态: {key} = {value}")
-        self.reset_save_timer()
+          self.reset_save_timer()
 
     def save_status(self):
         backup_file_path = self.file_path + ".bak"
@@ -223,7 +228,7 @@ class StatusManager:
             all_statuses[self.trading_pair] = self.status
             
             # 先将更新写入临时文件
-            with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
+            with atomic_write(temp_file_path, overwrite=True) as temp_file:
                 self.yaml.dump(all_statuses, temp_file)
 
             # 重命名临时文件为正式文件，确保写入的原子性
@@ -727,8 +732,9 @@ def current_status():
         # 计算净成本
         net_cost = round((long_cost - (net_cost1 / net_position)) if long_cost > short_cost else ((short_cost + (net_cost1 / net_position)) if short_cost > long_cost else (current_price - (net_cost1 / net_position))), dpp)
      #   net_cost = (short_cost * short_position - long_cost * long_position) / net_position
-        starta_cost = net_cost
+        
         starta_direction_temp = "lb" if long_position >= short_position else "ss"
+        starta_cost = long_cost if starta_direction_temp == "lb" else short_cost
         if starta_direction != starta_direction_temp:
             starta_direction = starta_direction_temp
             logger.info(f"更新对冲方向: {starta_direction}")
@@ -1530,6 +1536,7 @@ def calculate_score(conditions_enabled):
 
   # 检查是否在新的一分钟内第一次调用
   if score_cache['last_calc_period'] is not None and score_cache['last_calc_period'] == current_period:
+      logger.info(f"{current_period}已调用，返回{score_cache['last_score']}")
       return score_cache['last_score']
 
   data = kline_data_cache[interval]
@@ -1789,7 +1796,7 @@ def adjust_quantity(ad_quantity):
 
 
 def update_order_status(response, position):
-      global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position
+      global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, add_rate, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position
       if 'price' in response and 'origQty' in response and 'type' in response and 'side' in response:
         update_price = float(response['price'] if response['type'] != 'TRAILING_STOP_MARKET' else response['activatePrice'])
         quantity_response = float(response['origQty'])
@@ -1903,7 +1910,7 @@ def place_limit_order(symbol, position, price, quantitya, callback = 0.4):
         return
     if origQty <= 0:
         logger.error("下单量必须大于0")
-        return NONE
+        return 
 
     # 根据持仓量调整下单逻辑
     def determine_order_side():
@@ -2080,7 +2087,7 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
         # 检查当前价格是否达到或超过启动价格
         if start_order_price == None and start_price_reached == False:
           start_order_price = round(optimal_price * (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), dpp)
-          logger.info(f"启动价为None并未触发则用最佳价格的{add_rate}：{start_order_price}")
+          logger.info(f"启动价为None并未触发则用最佳价格的{round(add_rate,dpp)}：{start_order_price}")
 
         if (trade_direction == 'lb' and start_order_price != None and current_price <= start_order_price) or \
       (trade_direction == 'ss' and start_order_price != None and current_price >= start_order_price):
@@ -2094,6 +2101,7 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
           if price_change >= callback_rate:
               if trade_direction == 'lb' and current_price > optimal_price:
                   # 价格下跌到达回调率，执行买入操作
+                  logger.info(f"上涨达回调率买入")
                   if place_limit_order(symbol, trade_direction, current_price, trade_quantity, callback):
                     trade_executed = True
                     start_price_reached = False
@@ -2101,6 +2109,7 @@ def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trad
                     add_position_1 = 0
               elif trade_direction == 'ss' and current_price < optimal_price:
                   # 价格上涨到达回调率，执行卖出操作
+                  logger.info(f"下跌达回调率卖出")
                   if place_limit_order(symbol, trade_direction, current_price, trade_quantity, callback):
                     trade_executed = True
                     start_price_reached = False
@@ -2185,24 +2194,33 @@ def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quanti
 def trading_strategy():
   # starta_cost启动成本咱改为从current_status获取
     global starta_price, starta_position, starta_cost, trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4, add_position_1
-    logger.info("******** 对冲系统 ********")
+    logger.info(f"******** {starta_direction}对冲中 ********")
     try:
       if trading_strategy_enabled == 0:
         logger.info("交易策略未启用")
         return  
-
+      logger.info(f"启动仓位：{starta_position}")
+      if starta_position == 0:
+        logger.info("未开仓,初始化对冲")
+        trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4 = True, False, 0, True, False, 0, True, False, 0, True, False, 0
+        starta_price = current_price
+        trigger_price = starta_price
+        logger.info(f"触发价格：{trigger_price}")
+        starta_position = add_position if add_position > 0 else 1
+        
       trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
+      logger.info(f"触发价格：{trigger_price}")
       profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
-      logger.info(f"-开始对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
-      logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
-      logger.info(f"-追加幅度：{add_rate}, 单位追加量：{add_position}")
-      logger.info(f"-追加价格：{trigger_price}, 止盈价格：{profit_price}")
       if starta_price == 0:
         starta_price, last_price_update_time = get_current_price(symbol)
         logger.info(f"启动价格调整为当前价格：{starta_price}")
-      if starta_cost == 0:
+      if starta_cost == 0 or starta_cost < starta_price and starta_direction == 'lb' or starta_cost > starta_price and starta_direction == 'ss':
         starta_cost = starta_price
         logger.info(f"启动成本调整为启动价格：{starta_cost}")
+      logger.info(f"-开始{starta_direction}对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
+      logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
+      logger.info(f"-追加幅度：{round(add_rate,dpp)}, 单位追加量：{add_position}")
+      logger.info(f"-追加价格：{trigger_price}, 止盈价格：{profit_price}")
       # 执行交易策略的核心逻辑
       conditions_enabled = {
         'ssbb_logic': ssbb_logic_enabled,
@@ -2213,44 +2231,44 @@ def trading_strategy():
       }
       score = calculate_score(conditions_enabled)
       add_direction = 'lb'if starta_direction == 'ss' else 'ss'
-      profit_position =  starta_position - add_position  # 止盈量
+      
       if not trade_executed_1 and add_position_1 != 0:
-        logger.info(f"动态追踪1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}")
+        logger.info(f"动态追加1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}")
         start_price_reached_1, trade_executed_1, optimal_price_1 = dynamic_tracking(symbol, starta_direction, add_rate, optimal_price_1, add_position_1, start_price_reached=start_price_reached_1, trade_executed = trade_executed_1)
-        logger.info(f"动态追踪1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}")
+        logger.info(f"动态追加1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}")
       if trade_executed_1 and add_position_1 != 0:
         starta_position += add_position_1  # 更新持仓量
         add_position_1 = 0
         optimal_price_1 = 0
         trade_executed_2 = True
-        logger.info(f"动态追踪1{trade_executed_1}，重置交易量,保本止盈2改{trade_executed_2}")
+        logger.info(f"动态追加1{trade_executed_1}，重置交易量,保价强追2改{trade_executed_2}")
       if not trade_executed_2 and breakeven_price_2 != 0:
-        logger.info(f"保本止盈2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}")
+        logger.info(f"保价强追2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}")
         start_price_reached_2, trade_executed_2 = breakeven_stop_profit(symbol, starta_direction, breakeven_price_2, add_position_1, start_price_reached=start_price_reached_2, trade_executed = trade_executed_2)
-        logger.info(f"保本止盈2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}")
+        logger.info(f"保价强追2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}")
       if trade_executed_2 and add_position_1 != 0:
         starta_position += add_position_1  # 更新持仓量
         add_position_1 = 0
         trade_executed_1 = True
-        logger.info(f"保本止盈2{trade_executed_2}，重置交易量，动态追踪1改{trade_executed_1}")
+        logger.info(f"保价强追2{trade_executed_2}，重置交易量，动态追加1改{trade_executed_1}")
       if not trade_executed_3 and starta_position != 0:
-        logger.info(f"动态追踪3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
+        logger.info(f"动态追平3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
         start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, profit_position, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
-        logger.info(f"动态追踪3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
-      if trade_executed_3 and starta_position != 0:
-        starta_position = 0
+        logger.info(f"动态追平3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
+      if trade_executed_3 and starta_position != add_position:
+        starta_position = add_position
         optimal_price_3 = 0
         trade_executed_4 = True
-        logger.info(f"动态追踪3{trade_executed_3}，重置交易量,保本止盈4改{trade_executed_4}")
+        logger.info(f"动态追平3{trade_executed_3}，重置交易量,保价强平4改{trade_executed_4}")
         starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
       if not trade_executed_4 and breakeven_price_4 != 0:
-        logger.info(f"保本止盈4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
+        logger.info(f"保价强平4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
         start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, profit_position, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
-        logger.info(f"保本止盈4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
-      if trade_executed_4 and starta_position != 0:
-        starta_position = 0
+        logger.info(f"保价强平4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
+      if trade_executed_4 and starta_position != add_position:
+        starta_position = add_position
         trade_executed_3 = True
-        logger.info(f"保本止盈4{trade_executed_4}，重置交易量，动态追踪1改{trade_executed_3}")
+        logger.info(f"保价强平4{trade_executed_4}，重置交易量，动态追加1改{trade_executed_3}")
         starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
 
       # 价格到达触发点
@@ -2259,21 +2277,20 @@ def trading_strategy():
 
         starta_cost = round(((starta_position * starta_cost + trigger_price * add_position) / (starta_position + add_position)), dpp)  # 更新启动成本
         starta_price = current_price  # 更新启动价格
-        breakeven_price_2 = trigger_price # 更新保本价格
-        trigger_price = round(starta_price * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp) # 更新追加价格
-        profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)  # 更新止盈价格
         add_position_1 += add_position # 更新交易量
-        logger.info(f"更新启动价格：{starta_price}, 启动成本：{starta_cost}")
-        logger.info(f"更新追加价格：{trigger_price}, 止盈价格：{profit_price}")
+        logger.info(f"更新启动价格：{starta_price}, 启动成本：{starta_cost}, 追加量：{add_position_1}")
         if (starta_direction == 'lb' and score >= ts_threshold) or \
          (starta_direction == 'ss' and score <= ts_threshold):
+          logger.info(f"触发{starta_direction}对冲加仓")
           if place_limit_order(symbol, starta_direction, trigger_price, add_position_1, callback):
             trade_executed_1 = True
             trade_executed_2 = True
+            profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)  # 更新止盈价格
             starta_position += add_position_1  # 更新持仓量
             add_position_1 = 0
-            logger.info(f"成功对冲下单1：{trigger_price}")
+            logger.info(f"成功对冲下单1：{trigger_price}, 止盈价格：{profit_price}")
         else:
+          breakeven_price_2 = trigger_price # 更新保本价格
           if optimal_price_1 == 0 or \
            (starta_direction == 'lb' and current_price < optimal_price_1) or \
            (starta_direction == 'ss' and current_price > optimal_price_1):
@@ -2290,26 +2307,30 @@ def trading_strategy():
             add_position_1 = 0
             optimal_price_1 = 0
             trade_executed_2 = True
-            logger.info(f"动态追踪1{trade_executed_1}，重置交易量,保本止盈2改{trade_executed_2}")
+            profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)  # 更新止盈价格
+            logger.info(f"动态追加1{trade_executed_1}，重置交易量,保价强追2改{trade_executed_2}, 止盈价格：{profit_price}")
           start_price_reached_2,trade_executed_2 = breakeven_stop_profit(symbol, starta_direction, breakeven_price_2, add_position_1,start_order_price=trigger_price, start_price_reached=start_price_reached_2, trade_executed = trade_executed_2)
           logger.info(f"新对冲单，保本止盈保本价{breakeven_price_2}")
           if trade_executed_2 and add_position_1 != 0:
             starta_position += add_position_1  # 更新持仓量
             add_position_1 = 0
             trade_executed_1 = True
-            logger.info(f"保本止盈2{trade_executed_2}，重置交易量，动态追踪1改{trade_executed_1}")
-
+            profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)  # 更新止盈价格
+            logger.info(f"保价强追2{trade_executed_2}，重置交易量，动态追加1改{trade_executed_1}, 止盈价格：{profit_price}")
         logger.info(f"新订单已放置在 {trigger_price}，仓位更新为 {starta_position}，平均成本更新为 {starta_cost}，止盈价格更新为 {profit_price}")
+        trigger_price = round(starta_price * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp) # 更新追加价格
+        logger.info(f"触发价格：{trigger_price}")
+        logger.info(f"更新追加价格：{trigger_price}")  #最好确保成交后再更新止盈价格
 
 
       # 检查是否达到止盈点
       if (starta_position != 0 and starta_direction == 'lb' and current_price > profit_price) or (starta_position != 0 and starta_direction == 'ss' and current_price < profit_price):
-        profit_position =  starta_position - add_position  # 止盈量
-        starta_position = add_position
+        profit_position = max(starta_position - add_position, 0)# 止盈量
         if (starta_direction == 'lb' and score <= -ts_threshold) or \
          (starta_direction == 'ss' and score >= ts_threshold):
-          if place_limit_order(symbol, starta_direction, profit_price, profit_position, callback):
-            starta_position = 0
+          logger.info(f"触发{starta_direction}对冲止盈")
+          if profit_position > 0 and place_limit_order(symbol, add_direction, profit_price, profit_position, callback):
+            starta_position = add_position
             trade_executed_3 = True
             trade_executed_4 = True
             logger.info("达到止盈点，评分下单平仓...")
@@ -2323,14 +2344,14 @@ def trading_strategy():
           start_price_reached_3 = False
           start_price_reached_4 = False
           start_price_reached_3, trade_executed_3, optimal_price_3 = dynamic_tracking(symbol, add_direction, add_rate, optimal_price_3, profit_position,start_order_price=profit_price, start_price_reached=start_price_reached_3, trade_executed = trade_executed_3)
-          if trade_executed_3 and starta_position != 0:
-            starta_position = 0
+          if trade_executed_3 and starta_position != add_position:
+            starta_position = add_position
             optimal_price_3 = 0
             trade_executed_4 = True
             starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
           start_price_reached_4, trade_executed_4 = breakeven_stop_profit(symbol, add_direction, breakeven_price_4, profit_position, start_order_price=profit_price, start_price_reached=start_price_reached_4, trade_executed = trade_executed_4)
-          if trade_executed_4 and starta_position != 0:
-            starta_position = 0
+          if trade_executed_4 and starta_position != add_position:
+            starta_position = add_position
             trade_executed_3 = True
             starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
           logger.info("达到止盈点，动态保本...")
