@@ -711,7 +711,7 @@ def update_position_cost(price, quantity_upc, position_side, operation_type):
 
 # 获取当前仓位状态
 def current_status():
-    global net_cost, starta_cost, starta_direction
+    global net_cost, starta_cost, starta_direction, long_position, short_position, long_cost, short_cost
     try:
         # 构建最近订单信息
         last_order_info = []
@@ -720,6 +720,16 @@ def current_status():
             last_order_info.append(f"-最近买单: {float(last_order_price):.{dpp}f}")
         if last_s_order_price is not None:
             last_order_info.append(f"最近卖单: {float(last_s_order_price):.{dpp}f}")
+        if last_order_price > 0 and long_cost <=0 or long_cost is None:
+          long_cost = last_order_price
+          long_position += quantity
+          status_manager.update_status('long_cost', round(long_cost, dpp))
+          status_manager.update_status('long_position', round(long_position, dpq))
+        if last_s_order_price > 0 and short_cost <=0 or short_cost is None:
+          short_cost = last_s_order_price
+          short_position += quantity
+          status_manager.update_status('short_cost', round(short_cost, dpp))  
+          status_manager.update_status('short_position', round(short_position, dpq))
         last_order_info = ", ".join(last_order_info) or "最近订单: None"
 
         # 构建成本和持仓量信息
