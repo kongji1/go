@@ -816,7 +816,7 @@ def current_status():
 
     starta_direction_temp = "lb" if long_position >= short_position else "ss"
     if starta_position > add_position:
-      starta_cost = long_cost if starta_direction_temp == "lb" else short_cost
+      starta_cost = round(long_cost * (1 + add_rate) ** 7, dpp) if starta_direction_temp == "lb" else round(short_cost * (1 - add_rate) ** 7, dpp)
     if starta_direction != starta_direction_temp:
       starta_direction = starta_direction_temp
       logger.info(f"更新对冲方向: {starta_direction}")
@@ -2272,8 +2272,8 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   if position not in ['lb', 'ss']:
     logging.error(f"无效的订单意图：{position}")
     return
-  if position == 'lb' and long_position + quantitya > max_position_size_long and short_position <= quantitya or \
-   position == 'ss' and short_position + quantitya > max_position_size_short and long_position <= quantitya:
+  if (position == 'lb' and long_position - short_position + quantitya > max_position_size_long) or \
+   (position == 'ss' and short_position - long_position + quantitya > max_position_size_short):
     logging.error(
       f"{position}风控{max_position_size_long if position == 'lb' else max_position_size_short}：多:{long_position} 空:{short_position}")
     return
@@ -2315,10 +2315,10 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
       logging.error(f"无效的订单意图：{position}")
       return NONE
 
-    if force_reduce or (position == LONG_BUY and short_position >= origQty)or (position == SHORT_SELL and long_position >= origQty):
+    if force_reduce or (position == LONG_BUY and short_position >= origQty) or (position == SHORT_SELL and long_position >= origQty):
       logger.info(f"强制减仓{force_reduce},优先减仓{position}:{short_position if position == LONG_BUY else long_position}")
       return ('BUY', 'SHORT') if position == LONG_BUY else ('SELL', 'LONG')
-    elif (position == LONG_BUY and long_position + origQty <= max_position_size_long) or (position == SHORT_SELL and short_position + origQty <= max_position_size_short):
+    elif (position == LONG_BUY and long_position - short_position + origQty <= max_position_size_long) or (position == SHORT_SELL and short_position - long_position + origQty <= max_position_size_short):
       return ('BUY', 'LONG') if position == LONG_BUY else ('SELL', 'SHORT')
     return NONE
 
