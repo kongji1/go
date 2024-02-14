@@ -93,6 +93,7 @@ ORDER_RECORDS_JSON = "order_records.json"
 STATUS_JSON = "status.json"
 
 
+
 #通用的数据加载
 def load_json_file(file_name, default_value=None):
   file_path = build_file_path(file_name)
@@ -481,7 +482,8 @@ dpp = len(str(min_price_step).split('.')[1]) if '.' in str(
 min_quantity = status_manager.get_status('min_quantity', 0.01)
 dpq = len(str(min_quantity).split('.')[1]) if '.' in str(
   min_quantity) else 0  #decimal_places最小交易量的精度
-max_position_size = status_manager.get_status('max_position_size', 0.1)
+max_position_size_long = status_manager.get_status('max_position_size_long', 0.1)
+max_position_size_short = status_manager.get_status('max_position_size_short', 0.1)
 starta_direction = status_manager.get_status('starta_direction', 'lb')
 add_rate = status_manager.get_status('add_rate', 0.02)  # 追加仓位的跨度
 ts_threshold = status_manager.get_status('ts_threshold', 75)  #分数阈值
@@ -943,8 +945,11 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
           if response.status == 200:
             new_data = await response.json()
             if new_data:
+              #print(f"{new_data}")
+              # 插入数据到本地数据库
+              bulk_insert_to_database(new_data, symbol, interval)
               last_known_price = float(new_data[-1][4])
-              logger.info(f"kline更新价格{last_known_price}")
+              logger.info(f"k{interval}/{new_limit}更新价格{last_known_price}")
               current_time = datetime.now()
               last_price_update_time_dict[interval] = current_time  # 更新特定间隔的时间
               last_price_update_time = current_time
@@ -959,6 +964,9 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
                 kline_data_cache[interval] = merged_data
               else:
                 kline_data_cache[interval] = new_data
+          # 从本地数据库读取数据
+          #  kline_data_cache[interval] = read_recent_kline_data(symbol, interval, new_limit)
+          #  print(f"已读取{new_limit}")
           else:
             logger.error(f"请求失败：{response.status}")
       except Exception as e:
@@ -1031,6 +1039,68 @@ async def update_kline_data_async(symbol, current_time):
     # 在这里捕获可能引发的异常
     logger.error(f"异步更新K线数据时出错: {e}")
 
+import sqlite3
+
+def initialize_database():
+    connection = sqlite3.connect(os.path.join(BASE_PATH, 'kline_data.db'))
+    cursor = connection.cursor()
+
+    # 创建一个新的表格，包含交易对和时间间隔
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS kline_data (
+        symbol TEXT,
+        interval TEXT,
+        timestamp INTEGER PRIMARY KEY,
+        open TEXT,
+        high TEXT,
+        low TEXT,
+        close TEXT,
+        volume TEXT,
+        close_time INTEGER,
+        quote_asset_volume TEXT,
+        number_of_trades INTEGER,
+        taker_buy_base_asset_volume TEXT,
+        taker_buy_quote_asset_volume TEXT,
+        extra_column TEXT
+    )''')
+    connection.commit()
+    connection.close()
+
+# 初始化数据库
+initialize_database()
+
+def bulk_insert_to_database(data, symbol, interval):
+    connection = sqlite3.connect(os.path.join(BASE_PATH, 'kline_data.db'))
+    cursor = connection.cursor()
+
+    insert_query = '''
+    INSERT OR IGNORE INTO kline_data (symbol, interval, timestamp, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume, extra_column)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+    
+    # 准备数据
+    prepared_data = [(symbol, interval) + tuple(d) for d in data]
+
+    cursor.executemany(insert_query, prepared_data)
+    connection.commit()
+    connection.close()
+
+def read_recent_kline_data(symbol, interval, limit=100):
+    connection = sqlite3.connect(os.path.join(BASE_PATH, 'kline_data.db'))
+    cursor = connection.cursor()
+
+    query = '''
+    SELECT timestamp, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+    FROM kline_data
+    WHERE symbol = ? AND interval = ?
+    ORDER BY timestamp DESC
+    LIMIT ?'''
+    
+    cursor.execute(query, (symbol, interval, limit))
+    rows = cursor.fetchall()
+    connection.close()
+    # 将元组列表转换为列表的列表
+    data_as_lists = [list(row) for row in rows]
+    return data_as_lists
 
 #领先指标 (Leading Indicators)：RSI SO CCI Williams%R
 #随机震荡指数stochastic_oscillator
@@ -1905,7 +1975,7 @@ def calculate_composite_score(current_price, last_order_price,
                                   leverage_l,
                                   trade_direction_l='BUY'):
     #initial_margin: 初始保证金 start_price: 起始价格 amplitude: 波动幅度（百分比）add_amount: 每次增加的头寸数量 leverage: 马丁系数 trade_direction: 交易方向，'BUY' 表示买入（多头），'SELL' 表示卖出（空头）。默认为 'BUY'。
-    global max_position_size
+    global max_position_size_long, max_position_size_short
     current_price_l = start_price_l
     total_quantity_l = long_position if trade_direction_l == 'BUY' else short_position
     total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY'
@@ -1926,13 +1996,18 @@ def calculate_composite_score(current_price, last_order_price,
         raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
       # 检查亏损是否超过初始保证金
       if loss_l > initial_margin_l:
-        if max_position_size != round((total_quantity_l / 4), dpq):
-          logger.info(f"原风控仓位:{max_position_size}")
-          max_position_size = round((total_quantity_l / 4), dpq)
-          status_manager.update_status('max_position_size', max_position_size)
-        logger.info(f"风控仓位{max_position_size}")
+        if max_position_size_long != round((total_quantity_l / 2), dpq) and trade_direction_l == 'BUY':
+          logger.info(f"原风控仓位:{max_position_size_long}")
+          max_position_size_long = round((total_quantity_l / 2), dpq)
+          status_manager.update_status('max_position_size_long', max_position_size_long)
+          logger.info(f"多单风控仓位{max_position_size_long}")
+        elif max_position_size_short != round((total_quantity_l / 10), dpq) and trade_direction_l == 'SELL':
+          logger.info(f"原风控仓位:{max_position_size_short}")
+          max_position_size_short = round((total_quantity_l / 10), dpq)
+          status_manager.update_status('max_position_size_short', max_position_size_short)
+          logger.info(f"空单风控仓位{max_position_size_short}")
         logger.info(f"{loss_l:.{dpq}f} > {initial_margin_l:.{dpq}f}")
-        logger.info(f"头寸{total_quantity_l:.{dpq}f}")
+        logger.info(f"头寸:{total_quantity_l:.{dpq}f},风控:{max_position_size_long if trade_direction_l == 'BUY' else max_position_size_short},持仓:{long_position if trade_direction_l == 'BUY' else short_position}")
         return round(current_price_l, dpp)
       # 根据百分比和杠杆调整价格，根据交易方向确定涨跌
       if trade_direction_l == 'BUY':
@@ -2197,11 +2272,14 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   if position not in ['lb', 'ss']:
     logging.error(f"无效的订单意图：{position}")
     return
-  if position == 'lb' and long_position > max_position_size and short_position <= 0 or \
-   position == 'ss' and short_position > max_position_size and long_position <= 0:
+  if position == 'lb' and long_position + quantitya > max_position_size_long and short_position <= quantitya or \
+   position == 'ss' and short_position + quantitya > max_position_size_short and long_position <= quantitya:
     logging.error(
-      f"{position}风控{max_position_size}：多:{long_position} 空:{short_position}")
+      f"{position}风控{max_position_size_long if position == 'lb' else max_position_size_short}：多:{long_position} 空:{short_position}")
     return
+  if position == 'ss' and long_position - short_position - quantitya < quantity_grid:
+    logging.error(f"维持多单持仓：{long_position}")
+    return 
   if callback < Slippage * 100:
     callback = min(Slippage * 100, 0.4)
 
@@ -2229,7 +2307,6 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
 
   # 根据持仓量调整下单逻辑
   def determine_order_side():
-    # 定义位置状态的常量
     LONG_BUY = 'lb'
     SHORT_SELL = 'ss'
     NONE = 'none'
@@ -2238,16 +2315,27 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
       logging.error(f"无效的订单意图：{position}")
       return NONE
 
-    if force_reduce or (position == LONG_BUY and long_position > max_position_size)or \
-       (position == SHORT_SELL and short_position > max_position_size):
+    if force_reduce or (position == LONG_BUY and short_position >= origQty)or (position == SHORT_SELL and long_position >= origQty):
+      logger.info(f"强制减仓{force_reduce},优先减仓{position}:{short_position if position == LONG_BUY else long_position}")
       return ('BUY', 'SHORT') if position == LONG_BUY else ('SELL', 'LONG')
-    elif (position == LONG_BUY
-          and short_position > origQty) or (position == SHORT_SELL
-                                            and long_position > origQty):
-      return ('BUY', 'SHORT') if position == LONG_BUY else ('SELL', 'LONG')
-    return ('BUY', 'LONG') if position == LONG_BUY else ('SELL', 'SHORT')
+    elif (position == LONG_BUY and long_position + origQty <= max_position_size_long) or (position == SHORT_SELL and short_position + origQty <= max_position_size_short):
+      return ('BUY', 'LONG') if position == LONG_BUY else ('SELL', 'SHORT')
+    return NONE
 
-  order_side, position_side = determine_order_side()
+  if determine_order_side() == 'none':
+    logger.error("下单逻辑出错")
+    return
+  else:
+    order_side, position_side = determine_order_side()
+
+  if order_side == 'BUY' and position_side == 'SHORT':
+    if short_position < origQty:
+        logger.info(f"强制下单，{force_reduce}风控{max_position_size_long}")
+        return
+  elif order_side == 'SELL' and position_side == 'LONG':
+    if long_position < origQty:
+        logger.info(f"强制下单，{force_reduce}风控{max_position_size_short}")
+        return
 
   def create_trailing_stop_order_params(order_side, position_side, price,
                                         callback, origQty):
@@ -2580,7 +2668,7 @@ def trading_strategy():
       starta_price = current_price
       trigger_price = starta_price
       starta_cost = starta_price if long_position == short_position == 0 else (long_cost if long_position >= short_position else short_cost)
-
+      add_position_1 = 0
       logger.info(f"触发价格1：{trigger_price}")
       starta_position = add_position if add_position > 0 else 1
     if add_position != math.ceil(add_position_u / current_price):
@@ -2608,7 +2696,7 @@ def trading_strategy():
       f"-开始{starta_direction}对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
     logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
     logger.info(f"-追加幅度：{round(add_rate,dpp)}, 单位追加量：{add_position}")
-    logger.info(f"-追加价格：{trigger_price}, 止盈价格：{profit_price}")
+    logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
     # 执行交易策略的核心逻辑
     conditions_enabled = {
       'ssbb_logic': ssbb_logic_enabled,
@@ -2879,7 +2967,7 @@ def trading_strategy():
 
     logger.info(f"-暂停对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
     logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
-    logger.info(f"-追加价格：{trigger_price}, 止盈价格：{profit_price}")
+    logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
   except Exception as e:
     logger.error(f"执行trading_strategy时发生错误: {e}")
     traceback.print_exc()
