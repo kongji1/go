@@ -780,38 +780,35 @@ def current_status():
     # 构建最近订单信息
     last_order_info = []
     logger.info("\n***** 最近交易与仓位 *****")
-    if last_order_price is not None:
+    if last_order_price and last_order_price > 0:
+      if not long_cost or long_cost <= 0:
+          long_cost = last_order_price
+          long_position += quantity
       last_order_info.append(f"-最近买单: {float(last_order_price):.{dpp}f}")
-    if last_s_order_price is not None:
+
+    if last_s_order_price and last_s_order_price > 0:
+      if not short_cost or short_cost <= 0:
+          short_cost = last_s_order_price
+          short_position += quantity
       last_order_info.append(f"最近卖单: {float(last_s_order_price):.{dpp}f}")
-    if last_order_price > 0 and long_cost <= 0 or long_cost is None:
-      long_cost = last_order_price
-      long_position += quantity
+
       status_manager.update_status('long_cost', round(long_cost, dpp))
       status_manager.update_status('long_position', round(long_position, dpq))
-    if last_s_order_price > 0 and short_cost <= 0 or short_cost is None:
-      short_cost = last_s_order_price
-      short_position += quantity
       status_manager.update_status('short_cost', round(short_cost, dpp))
       status_manager.update_status('short_position',
                                    round(short_position, dpq))
     last_order_info = ", ".join(last_order_info) or "最近订单: None"
 
     # 构建成本和持仓量信息
-    cost_info = f"-多头成本: {float(long_cost):.{dpp}f}" if long_cost is not None else "None"
-    cost_info += f", 空头成本: {float(short_cost):.{dpp}f}" if short_cost is not None else ", None"
+    cost_info = f"-多头成本: {float(long_cost):.{dpp}f}, 空头成本: {float(short_cost):.{dpp}f}"
     position_info = f"-多头持仓量: {round(long_position, dpq)}, 空头持仓量: {round(short_position, dpq)}"
+
     # 计算净持仓量
-    net_position = (
-      long_position -
-      short_position) if abs(long_position -
-                             short_position) > quantity_grid else quantity_grid
-    net_cost1 = (short_cost - long_cost) * min(long_position, short_position)
+    net_position = max(abs(long_position - short_position), quantity_grid)
+    total_profit_loss = (current_price - long_cost) * long_position + (short_cost - current_price) * short_position
     # 计算净成本
-    net_cost = round(
-      (long_cost - (net_cost1 / net_position)) if long_cost > short_cost else
-      ((short_cost + (net_cost1 / net_position)) if short_cost > long_cost else
-       (current_price - (net_cost1 / net_position))), dpp)
+    net_cost = round(current_price - total_profit_loss / net_position if long_position >= short_position else current_price + total_profit_loss / net_position, dpp)
+    
     #   net_cost = (short_cost * short_position - long_cost * long_position) / net_position
 
     starta_direction_temp = "lb" if long_position >= short_position else "ss"
@@ -820,7 +817,7 @@ def current_status():
     if starta_direction != starta_direction_temp:
       starta_direction = starta_direction_temp
       logger.info(f"更新对冲方向: {starta_direction}")
-    net_info = f"-净持仓量: {round(net_position, dpq)}, 净成本: {round(net_cost, dpp)}"
+    net_info = f"-净持仓量: {'多' if long_position >= short_position else '空'}{round(net_position, dpq)}, 净成本: {round(net_cost, dpp)}"
     # 最近side和余额
     side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.{dpp}f}, 余额: {float(floating_margin):.{dpp}f}" if floating_margin is not None else "None"
     logger.info(side_and_balance)
