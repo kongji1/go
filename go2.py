@@ -517,6 +517,7 @@ temp_ssbb = status_manager.get_status('ssbb', 0)
 FP = status_manager.get_status('FP', 0.01)
 quantity_grid = status_manager.get_status('quantity_grid', min_quantity)  #网格单位交易量
 quantity_grid_u = status_manager.get_status('quantity_grid_u', 5)  #网格单位交易量
+quantity_grid_rate = status_manager.get_status('quantity_grid_rate', 1)  #买卖原始基础上浮动比
 quantity = status_manager.get_status('quantity', min_quantity)  #网格最近交易量
 quantity_u = status_manager.get_status('quantity_u', 5)  #网格最近交易量
 last_order_direction = status_manager.get_status('last_order_direction', 'BUY')
@@ -2162,9 +2163,9 @@ def calculate_next_order_parameters(price, leverage):
       grid_count = 10
     # 根据网格数量调整下单量
     if current_price > reference_price:
-       origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * 10))
+       origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
     else:
-       origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * 10))
+       origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
     return next_price, origQty
   except Exception as e:
     logger.error(f"执行calculate_next_order_parameters出错: {e}")
@@ -2701,6 +2702,15 @@ def trading_strategy():
     if trading_strategy_enabled == 0:
       logger.info("交易策略未启用")
       return
+    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(max(5.1, add_position_u) / current_price)):
+      add_position = max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(max(5.1, add_position_u) / current_price))
+      logger.info(f"当前{round(add_position_rate * add_rate, 3)}更新单位对冲量：{add_position}")
+      status_manager.update_status('add_position', add_position)
+    if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
+      if add_position_u >= 5:
+        add_position = math.ceil(add_position_u / current_price)
+        logger.info(f"更新单位对冲量：{add_position}")
+        status_manager.update_status('add_position', add_position)
     logger.info(f"启动仓位：{starta_position}")
     if starta_position == 0:
       logger.info("未开仓,初始化对冲")
@@ -2711,15 +2721,7 @@ def trading_strategy():
       add_position_1 = 0
       logger.info(f"触发价格1：{trigger_price}")
       starta_position = add_position if add_position > 0 else 1
-    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(5.1 / current_price)):
-      add_position = max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(5.1 / current_price))
-      logger.info(f"当前{add_position_rate * add_rate}更新单位对冲量：{add_position}")
-      status_manager.update_status('add_position', add_position)
-    if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
-      if add_position_u >= 5:
-        add_position = math.ceil(add_position_u / current_price)
-        logger.info(f"更新单位对冲量：{add_position}")
-        status_manager.update_status('add_position', add_position)
+
     trigger_price = round(
       (min(
         starta_price if starta_cost == 0 or starta_cost is None else
