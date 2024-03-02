@@ -572,6 +572,7 @@ sobought_upper_bound = status_manager.get_status('sobought_upper_bound', 90)
 starta_price = status_manager.get_status('starta_price', 0)
 add_position = status_manager.get_status('add_position', min_quantity)
 add_position_u = status_manager.get_status('add_position_u', 10)
+add_position_rate = status_manager.get_status('add_position_rate', 1)
 starta_position = status_manager.get_status('starta_position', add_position)
 starta_cost = status_manager.get_status('starta_cost', starta_price)
 trade_executed_1 = status_manager.get_status('trade_executed_1', False)
@@ -2710,7 +2711,11 @@ def trading_strategy():
       add_position_1 = 0
       logger.info(f"触发价格1：{trigger_price}")
       starta_position = add_position if add_position > 0 else 1
-    if add_position != math.ceil(add_position_u / current_price):
+    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(5.1 / current_price)):
+      add_position = max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(5.1 / current_price))
+      logger.info(f"当前{add_position_rate * add_rate}更新单位对冲量：{add_position}")
+      status_manager.update_status('add_position', add_position)
+    if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
       if add_position_u >= 5:
         add_position = math.ceil(add_position_u / current_price)
         logger.info(f"更新单位对冲量：{add_position}")
@@ -3188,7 +3193,7 @@ async def main_loop():
           logger.info(f"网格系统下单成功")
       current_status()
 
-      #beta() #测试代码
+      beta() #测试代码
 
       logger.info(f"暂停9,{monitoring_interval}")
       await asyncio.sleep(monitoring_interval)  # 等待一分钟
