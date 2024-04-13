@@ -2251,8 +2251,7 @@ def calculate_composite_score(current_price, last_order_price,
 
   return ssbb, sbsb  # 返回 ssbb 和 sbsb 的值
 
-continuous_add_count_lb = 0
-continuous_add_count_ss = 0
+
 # 计算下一个买单的参数,leverage杠杆倍数暂时没有用
 def calculate_next_order_parameters(price, leverage, order_position):
   global last_order_direction, continuous_add_count_lb, continuous_add_count_ss
