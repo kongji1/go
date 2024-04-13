@@ -1,4 +1,5 @@
-import time  # 用于时间相关操作
+import time  # 用于时间相关操作 3435+duijian+对冲量改相对净持仓
+#优化指标传入周期
 import requests  # 用于发送HTTP请求
 import os  # 用于执行操作系统相关任务
 import sys  # 用于访问与 Python 解释器交互的变量和函数
@@ -16,6 +17,7 @@ import subprocess  # 用于执行外部命令
 import math  # 用于数学计算
 import pytz  # 导入 pytz 模块
 import aiohttp
+from aiolimiter import AsyncLimiter
 import ssl
 import asyncio
 import copy  #深度拷贝
@@ -92,7 +94,8 @@ CONFIG_B_TXT = "config_b.txt"
 ORDER_RECORDS_JSON = "order_records.json"
 STATUS_JSON = "status.json"
 
-
+# 异步限流器每分钟不超过120次请求
+limiter = AsyncLimiter(120, 60)  
 
 #通用的数据加载
 def load_json_file(file_name, default_value=None):
@@ -111,6 +114,7 @@ def load_json_file(file_name, default_value=None):
     logger.error(f"解析 {file_path} 时出现解码错误: {e}")
   except Exception as e:
     logger.error(f"加载 {file_path} 时出现未预期的错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
   return default_value if default_value is not None else {}
 
 
@@ -151,6 +155,9 @@ def update_json_file(file_name, data):
 
   except Exception as e:
     logger.error(f"更新 {file_path} 时发生未知错误：{e}")
+    traceback.print_exc()
+  # 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     # 处理其他可能的异常
 
   finally:
@@ -185,6 +192,9 @@ def update_status(key, value):
     update_json_file('status.json', status)
   except Exception as e:
     logger.error(f"更新status.json时出错: {e}")
+    traceback.print_exc()
+  # 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 优化后的status.json读取
@@ -217,6 +227,9 @@ class StatusManager:
         all_statuses = self.yaml.load(file) or {}
         return all_statuses.get(self.trading_pair, {})
     except Exception as e:
+      traceback.print_exc()
+      # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
       if self.logger:
         self.logger.error(f"读取状态文件时出错: {e}")
       return {}
@@ -262,6 +275,9 @@ class StatusManager:
         os.remove(backup_file_path)
 
     except Exception as e:
+      traceback.print_exc()
+      # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
       if self.logger:
         self.logger.error(f"保存状态到文件时出错: {e}")
       # 如果出现错误，尝试从备份恢复
@@ -348,7 +364,7 @@ def update_order_records(order_data):
 
 # 获取所有活跃订单并更新订单记录
 def fetch_and_update_active_orders(symbol):
-  global long_position, short_position, long_cost, short_cost
+  global long_position, short_position, long_cost, short_cost, transaction_fee_rate
   try:
     active_orders = client.get_orders(symbol=symbol)
     updated_records = []
@@ -370,19 +386,25 @@ def fetch_and_update_active_orders(symbol):
     response = client.get_position_risk(symbol=symbol)
     long_position = round(float(response[0]["positionAmt"]), dpq)
     long_cost = round(float(response[0]["entryPrice"]), dpp)
-    short_position = round(float(response[1]["positionAmt"]), dpq)
+    short_position = -round(float(response[1]["positionAmt"]), dpq)
     short_cost = round(float(response[1]["entryPrice"]), dpp)
     logger.info(f"{long_cost}多{long_position}")
     logger.info(f"{short_cost}空{short_position}")
+    # makerCommissionRate挂单手续费
+    if transaction_fee_rate != float(client.commission_rate(symbol=symbol)['takerCommissionRate']):
+      transaction_fee_rate = float(client.commission_rate(symbol=symbol)['takerCommissionRate'])
+      status_manager.update_status('transaction_fee_rate', transaction_fee_rate)
     status_manager.update_status('long_position', long_position)
     status_manager.update_status('long_cost', long_cost)
     status_manager.update_status('short_position', short_position)
     status_manager.update_status('short_cost', short_cost)
+
   except ClientError as error:
     logger.error(f"获取活跃订单时发生错误: {error}")
     logger.error(f"{error.args[0], error.args[1], error.args[2]}")
   except Exception as e:
     logger.error(f"处理活跃订单时出现未预期的错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 检查并更新订单的成交状态
@@ -399,11 +421,17 @@ def check_and_update_order_status(symbol):
           if new_status != record['status']:
             record['status'] = new_status
             updated = True
-            logger.info(f"订单 {record['order_id']} 状态更新为 {new_status}")
+            logger.info(f"订单 {record['order_id']} 状态更新为 {new_status}"
+                        )
       except ClientError as error:
-        logger.error(f"查询订单 {record['order_id']} 状态时出错: {error}")
+        logger.error(f"查询订单 {record['order_id']} 状态时出错: {error}"
+                     )
       except Exception as e:
-        logger.error(f"查询订单 {record['order_id']} 状态时出现未预期的错误: {e}")
+        logger.error(f"查询订单 {record['order_id']} 状态时出现未预期的错误: {e}"
+                     )
+        traceback.print_exc()
+        # 记录完整的堆栈跟踪
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
   if updated:
     update_json_file('order_records.json', cached_orders)
@@ -426,6 +454,9 @@ async def visit_url(url):
           logger.error(f"访问 {url} 失败: HTTP状态码 {response.status}")
     except Exception as e:
       logger.error(f"访问 {url} 时发生错误: {e}")
+      traceback.print_exc()
+      # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 使用此函数时请谨慎，并确保您理解相关的安全风险
@@ -444,8 +475,9 @@ callback = 100 * Slippage  # 回调比例，例如 100 * Slippage 表示回调�
 
 # 量化交易和策略参数
 leverage = 1.01  # 杠杆倍数，用于放大交易头寸
-interval = "5m"  # K线周期，例如 '5m' 表示5分钟
-interval_ssbb = "3m"  # K线周期，例如 '5m' 表示5分钟
+interval_5m = "5m"  # K线周期，例如 '5m' 表示5分钟
+interval_ssbb_3m = "3m"  # K线周期，例如 '5m' 表示5分钟
+interval_4h = "4h" 
 limit = 2880  # 限制获取市场数据时的数据点数量
 limit_test = 2880  # 回测获取市场数据时的数据点数量
 martingale = 1.01  # 马丁格尔策略倍数，用于在损失后增加投资量
@@ -456,7 +488,7 @@ price_change_enabled = 0  # 价格变化逻辑开关
 cost_price_logic_enabled = 0  # 成本和价格逻辑开关
 technical_indicators_enabled = 1  # 技术指标逻辑开关
 macd_signal_enabled = 1  # MACD信号逻辑开关
-trading_strategy_enabled = 1  # 追加对冲策略开关
+trading_strategy_enabled = 0  # 追加对冲策略开关
 
 # 订单和仓位管理相关参数
 
@@ -466,9 +498,9 @@ force_reduce = 0  # 是否启用强制减仓，0 表示不启用
 
 # 程序运行和性能参数
 max_run_time = 60 * 60 * 24 * 7  # 最大运行时间，以秒为单位
-monitoring_interval = 60  # 监测策略条件成立的时间间隔（秒）
+monitoring_interval = 20  # 监测策略条件成立的时间间隔（秒）
 order_interval = 60  # 下单操作的时间间隔（秒）
-update_interval = 60  # 更新价格的时间间隔（秒）
+update_interval = 20  # 更新价格的时间间隔（秒）
 ltime = 55  # 循环限速时间（秒）
 stime = 550  # 交易操作的频率（秒）
 
@@ -488,7 +520,9 @@ sbsb = 0  # 策略的初始交易开关状态，0 表示关闭
 #对冲策略
 import re
 status_manager = StatusManager('status.yaml', symbol, save_interval=60)
-# 从status字典中获取值，并确保它们不是None
+# 从status字典中获取值，并确保它们不是None， 
+first_assignment_done  = status_manager.get_status('first_assignment_done ', True) # congfig动态加载执行完成
+transaction_fee_rate = status_manager.get_status('transaction_fee_rate', 0.0005)
 min_price_step = status_manager.get_status('min_price_step', 0.001)
 dpp = len(re.findall(r'\.(\d+?)0*$', f"{min_price_step:.10f}")[0]) if '.' in f"{min_price_step:.10f}" else 0  #decimal_places最小价格步长的小数位数
 step_size = status_manager.get_status('step_size', 0.001)  # 订单量调整的步长
@@ -496,6 +530,10 @@ min_quantity = status_manager.get_status('min_quantity', 0.01)
 min_quantity_u = status_manager.get_status('min_quantity_u', 5)
 dpq = len(str(min_quantity).split('.')[1]) if '.' in str(
   min_quantity) else 0  #decimal_places最小交易量的精度
+LongRisk = status_manager.get_status('LongRisk', 0.01)  # 多单风控比例示例值
+LongRisk = min(LongRisk, 0.75)
+ShortRisk = status_manager.get_status('ShortRisk', 0.01) # 空单风控比例示例值
+ShortRisk = min(ShortRisk, 0.25)
 max_position_size_long = status_manager.get_status('max_position_size_long', 0.1)
 max_position_size_short = status_manager.get_status('max_position_size_short', 0.1)
 starta_direction = status_manager.get_status('starta_direction', 'lb')
@@ -527,12 +565,12 @@ last_price_update_time_str = status_manager.get_status(
 last_config_update_time_str = status_manager.get_status(
   'last_config_update_time', None)
 
-rsi_trigger_low = status_manager.get_status('rsi_trigger_low', 30)
-rsi_trigger_high = status_manager.get_status('rsi_trigger_high', 70)
-mfi_trigger_low = status_manager.get_status('mfi_trigger_low', 20)
-mfi_trigger_high = status_manager.get_status('mfi_trigger_high', 80)
-so_trigger_low = status_manager.get_status('so_trigger_low', 20)
-so_trigger_high = status_manager.get_status('so_trigger_high', 80)
+rsi_trigger_low_5m = status_manager.get_status('rsi_trigger_low_5m', 30)
+rsi_trigger_high_5m = status_manager.get_status('rsi_trigger_high_5m', 70)
+mfi_trigger_low_5m = status_manager.get_status('mfi_trigger_low_5m', 20)
+mfi_trigger_high_5m = status_manager.get_status('mfi_trigger_high_5m', 80)
+so_trigger_low_5m = status_manager.get_status('so_trigger_low_5m', 20)
+so_trigger_high_5m = status_manager.get_status('so_trigger_high_5m', 80)
 fastperiod = status_manager.get_status('fastperiod', 12)
 slowperiod = status_manager.get_status('slowperiod', 26)
 signalperiod = status_manager.get_status('signalperiod', 9)
@@ -594,7 +632,8 @@ optimal_price_3 = status_manager.get_status('optimal_price_3', 0)
 breakeven_price_2 = status_manager.get_status('breakeven_price_2', 0)
 breakeven_price_4 = status_manager.get_status('breakeven_price_4', 0)
 
-
+continuous_add_count_lb = status_manager.get_status('continuous_add_count_lb', 0)
+continuous_add_count_ss = status_manager.get_status('continuous_add_count_ss', 0)
 def requests_retry_session(retries=3,
                            backoff_factor=0.3,
                            status_forcelist=(500, 502, 504),
@@ -628,6 +667,7 @@ def price_to_datetime(update_time_str):
     return update_time
   except Exception as e:
     logger.error(f"Error parsing {update_time}: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     update_time = None
     return update_time
 
@@ -680,6 +720,7 @@ def get_current_time():
     logger.info(f"当前时间：{time_str8}")
     return current_time, time_str8  # 返回datetime对象和时间字符串
   except Exception as e:
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     print(f"获取时间时出错: {e}")
     return datetime.now(), "Error"  # 发生错误时返回当前时间的datetime对象
 
@@ -736,6 +777,9 @@ def get_current_price(symbol, max_retries=1, now=0):
       logger.error(f"请求超时: {e}")
     except Exception as e:
       logger.error(f"获取当前价格时出错: {e}")
+      traceback.print_exc()
+      # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
     if current_url == primary_url:
       logger.info(f"切换到备用URL，暂停1,{timeout}s")
@@ -814,7 +858,7 @@ def current_status():
           short_position = round(float(response[1]["positionAmt"]), dpq)
           short_cost = round(float(response[1]["entryPrice"]), dpp)
       last_order_info.append(f"最近卖单: {round(last_s_order_price, dpp)}")
- 
+
       status_manager.update_status('long_cost', round(long_cost, dpp))
       status_manager.update_status('long_position', round(long_position, dpq))
       status_manager.update_status('short_cost', round(short_cost, dpp))
@@ -825,7 +869,7 @@ def current_status():
     # 构建成本和持仓量信息 
     cost_info = f"-多头成本: {round(long_cost, dpp)}, 空头成本:{round(short_cost, dpp)}"
     position_info = f"-多头持仓量: {round(long_position, dpq)}, 空头持仓量: {round(short_position, dpq)}"
-    
+
     # 计算净持仓量
     net_position = max(abs(long_position - short_position), quantity_grid)
     total_profit_loss = (current_price - long_cost) * long_position + (short_cost - current_price) * short_position
@@ -840,7 +884,7 @@ def current_status():
       logger.info(f"更新对冲方向: {starta_direction}")
     net_info = f"-净持仓: {'多' if long_position >= short_position else '空'}{round(net_position, dpq)}, 成本: {round(net_cost, dpp)}"
     # 最近side和余额
-    side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.{dpp}f}, 余额: {round(floating_margin, dpp)}" if floating_margin is not None else "None"
+    side_and_balance = f"-最近side: {'l' if last_order_direction == 'BUY' else 's' if last_order_direction == 'SELL' else 'None'}:{average_long_cost if last_order_direction == 'BUY' else average_short_cost:.{dpp}f}/{average_long_position if last_order_direction == 'BUY' else average_short_position:.{dpq}f}, 余额: {round(floating_margin, dpp)}" if floating_margin is not None else "None"
     logger.info(side_and_balance)
     logger.info(last_order_info)
     logger.info(cost_info)
@@ -859,6 +903,9 @@ def current_status():
 #  logger.info(status_message)
   except Exception as e:
     logger.error(f"获取当前状态时出错: {e}")
+    traceback.print_exc()
+  # 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 def calculate_limit_for_interval(interval, days):
@@ -886,7 +933,7 @@ def calculate_limit_for_interval(interval, days):
     raise ValueError(f"未知的K线间隔: {interval}")
 
   data_points_per_day = seconds_per_day / interval_in_seconds
-  return int(data_points_per_day * days)  # 指定天数的数据点数
+  return max(int(data_points_per_day * days), limit_test)  # 指定天数的数据点数
 
 
 def is_force_update_time(update_interval_hours):
@@ -934,13 +981,18 @@ last_price_update_time_dict = {}  # 存储不同时间间隔K线数据的最后�
 async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
   global last_known_price, last_price_update_time_dict, kline_data_cache, last_price_update_time
   try:
+    # 验证 interval 格式
+    if not isinstance(interval, str) or not interval.endswith(('m', 'h', 'd', 'w')):
+      raise ValueError(f"未知的K线间隔: {interval}")
+    # 确保字典中存在该键，如果不存在则初始化
+    if interval not in kline_data_cache:
+        kline_data_cache[interval] = []
+        logger.info(f"初始化K线数据缓存: {interval}")
     current_time = datetime.now()
-
     last_update_time = last_price_update_time_dict.get(interval)
-
     if is_force_update_time(6) or first_fetch or (interval
                                                   not in kline_data_cache):
-      new_limit = calculate_limit_for_interval(interval, 1)
+      new_limit = calculate_limit_for_interval(interval, 2)
 
     else:
       if not first_fetch and interval in kline_data_cache:
@@ -948,14 +1000,16 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
           elapsed_time = (current_time - last_update_time).total_seconds()
           new_limit = calculate_needed_klines(elapsed_time, interval)
           if new_limit < 1:
-            logger.info(f"{interval} K线数据最近已更新，跳过重新获取")
+            logger.info(f"{interval}K已更新")
             return kline_data_cache[interval]
         else:
           new_limit = limit
       else:
         new_limit = limit
 
-    async with aiohttp.ClientSession() as session:
+    async with limiter, aiohttp.ClientSession() as session:
+      if new_limit < limit_test:
+        new_limit = limit_test
       url = f"https://api.binance.com/api/v1/klines?symbol={symbol}&interval={interval}&limit={new_limit}"
       try:
         async with session.get(url) as response:
@@ -992,7 +1046,8 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
     return kline_data_cache[interval]
   except Exception as e:
     logger.error(f"get_kline_data_async出错: {e}")
-    return None
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    return kline_data_cache.get(interval, None)
 
 
 # 缓存K线数据的函数
@@ -1034,27 +1089,38 @@ async def cache_kline_data(symbol, intervals, limit):
 
 # 更新K线数据的函数
 async def update_kline_data_async(symbol, current_time):
-  try:
-    update_performed = False
-    # Update data every hour at 29 and 59 minutes
-    if current_time.minute % 15 == 14:
-      await cache_kline_data(symbol, [interval_ssbb], limit)
-      logger.info(
-        f"已更新: {interval_ssbb}   {len(kline_data_cache[interval_ssbb])}\n")
-      update_performed = True
-    # Update data every 5 minutes
-    if current_time.minute % 3 == 2:
-      await cache_kline_data(symbol, [interval], limit)
-      logger.info(f"已更新: {interval}   {len(kline_data_cache[interval])}\n")
-      update_performed = True
-    if update_performed:
-      logger.info(f"待更新数据")
-      logger.info(f"  {interval_ssbb}: {len(kline_data_cache[interval_ssbb])}")
-      logger.info(f"{interval}: {len(kline_data_cache[interval])}\n")
+    try:
+        intervals_to_update = []
+        interval_mapping = {
+            '1m': lambda dt: True,  # 每分钟更新
+            '3m': lambda dt: dt.minute % 3 == 2,
+            '5m': lambda dt: dt.minute % 5 == 4,
+            '15m': lambda dt: dt.minute % 15 == 14,
+            '30m': lambda dt: dt.minute % 30 == 29,
+            '1h': lambda dt: dt.minute == 59,
+            '2h': lambda dt: dt.minute == 59 and dt.hour % 2 == 1,
+            '4h': lambda dt: dt.minute == 59 and dt.hour % 4 == 3,
+            '6h': lambda dt: dt.minute == 59 and dt.hour % 6 == 5,
+            '8h': lambda dt: dt.minute == 59 and dt.hour % 8 == 7,
+            '12h': lambda dt: dt.minute == 59 and dt.hour % 12 == 11,
+            '1d': lambda dt: dt.minute == 59 and dt.hour == 23,
+            '3d': lambda dt: dt.minute == 59 and dt.hour == 23 and (dt.day - 1) % 3 == 2,
+            '1w': lambda dt: dt.minute == 59 and dt.hour == 23 and dt.weekday() == 6,
+        }
+        if current_time.second < 21:
+          # 根据当前时间和间隔映射，确定需要更新的间隔
+          for interval, check_fn in interval_mapping.items():
+              if check_fn(current_time):
+                  intervals_to_update.append(interval)
 
-  except Exception as e:
-    # 在这里捕获可能引发的异常
-    logger.error(f"异步更新K线数据时出错: {e}")
+          # 异步更新每个需要更新的间隔的数据
+          if intervals_to_update:
+              await cache_kline_data(symbol, intervals_to_update, limit)  # 一次性处理所有需要更新的间隔
+              for interval in intervals_to_update:
+                  logger.info(f"已更新: {interval} {len(kline_data_cache[interval])}\n")
+    except Exception as e:
+        logger.error(f"异步更新K线数据时出错: {e}")
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 import sqlite3
 
@@ -1093,7 +1159,7 @@ def bulk_insert_to_database(data, symbol, interval):
     insert_query = '''
     INSERT OR IGNORE INTO kline_data (symbol, interval, timestamp, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume, extra_column)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
-    
+
     # 准备数据
     prepared_data = [(symbol, interval) + tuple(d) for d in data]
 
@@ -1111,7 +1177,7 @@ def read_recent_kline_data(symbol, interval, limit=100):
     WHERE symbol = ? AND interval = ?
     ORDER BY timestamp DESC
     LIMIT ?'''
-    
+
     cursor.execute(query, (symbol, interval, limit))
     rows = cursor.fetchall()
     connection.close()
@@ -1121,10 +1187,10 @@ def read_recent_kline_data(symbol, interval, limit=100):
 
 #领先指标 (Leading Indicators)：RSI SO CCI Williams%R
 #随机震荡指数stochastic_oscillator
-def c_so(data, k_window=14, d_window=3):
+def c_so(interval, k_window=14, d_window=3):
   global kline_data_cache  #异步获取K线的数据
   try:
-    #data = copy.deepcopy(kline_data_cache[interval_cso])
+    data = copy.deepcopy(kline_data_cache[interval])
     if current_price is not None:
       data[-1][4] = current_price
     # 获取最高价、最低价和收盘价
@@ -1143,6 +1209,7 @@ def c_so(data, k_window=14, d_window=3):
     return percent_k, percent_d
   except Exception as e:
     logger.error(f"Stochastic Oscillator计算出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None
 
 
@@ -1155,7 +1222,7 @@ async def backtest_so(interval,
   global kline_data_cache
   try:
     data = copy.deepcopy(kline_data_cache[interval])
-    percent_k, percent_d = c_so(data, k_window, d_window)
+    percent_k, percent_d = c_so(interval, k_window, d_window)
     if percent_k is None or percent_d is None:
       return None, None, None
 
@@ -1179,63 +1246,67 @@ async def backtest_so(interval,
     return overbought, oversold, total_return
   except Exception as e:
     logger.error(f"Backtest SO出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
+async def sobest(interval):
+  global so_trigger_low_5m, so_trigger_high_5m, sosold_lower_bound, sosold_upper_bound, sobought_lower_bound, sobought_upper_bound
+  try:
+    best_return = -np.inf
+    oversold_range = range(max(1, sosold_lower_bound),
+                           min(100, sosold_upper_bound))
+    overbought_range = range(max(1, sobought_lower_bound),
+                             min(100, sobought_upper_bound))
+    iterations = 0
+    max_iterations = 10
+    testso = 0
+    while iterations < max_iterations:
+      for overbought in overbought_range:
+        for oversold in oversold_range:
+          _, _, total_return = await backtest_so(interval, overbought, oversold)
+          if total_return > best_return:
+            best_return = total_return
+            best_overbought = overbought
+            best_oversold = oversold
+      testso += 1
+      logger.info(f"testso {testso}")
+      # 动态调整阈值范围
+      overbought_adjusted = False
+      oversold_adjusted = False
 
-async def sobest():
-  global so_trigger_low, so_trigger_high, sosold_lower_bound, sosold_upper_bound, sobought_lower_bound, sobought_upper_bound
-  best_return = -np.inf
-  oversold_range = range(max(1, sosold_lower_bound),
-                         min(100, sosold_upper_bound))
-  overbought_range = range(max(1, sobought_lower_bound),
-                           min(100, sobought_upper_bound))
-  iterations = 0
-  max_iterations = 10
-  testso = 0
-  while iterations < max_iterations:
-    for overbought in overbought_range:
-      for oversold in oversold_range:
-        _, _, total_return = await backtest_so(interval, overbought, oversold)
-        if total_return > best_return:
-          best_return = total_return
-          best_overbought = overbought
-          best_oversold = oversold
-    testso += 1
-    logger.info(f"testso {testso}")
-    # 动态调整阈值范围
-    overbought_adjusted = False
-    oversold_adjusted = False
+      if best_overbought in [overbought_range.start, overbought_range.stop - 1]:
+        overbought_range = range(max(0, best_overbought - 10),
+                                 min(100, best_overbought + 10))
+        overbought_adjusted = True
 
-    if best_overbought in [overbought_range.start, overbought_range.stop - 1]:
-      overbought_range = range(max(0, best_overbought - 10),
-                               min(100, best_overbought + 10))
-      overbought_adjusted = True
+      if best_oversold in [oversold_range.start, oversold_range.stop - 1]:
+        oversold_range = range(max(0, best_oversold - 10),
+                               min(100, best_oversold + 10))
+        oversold_adjusted = True
 
-    if best_oversold in [oversold_range.start, oversold_range.stop - 1]:
-      oversold_range = range(max(0, best_oversold - 10),
-                             min(100, best_oversold + 10))
-      oversold_adjusted = True
+      if not overbought_adjusted and not oversold_adjusted:
+        break  # 如果没有调整，则提前结束迭代
 
-    if not overbought_adjusted and not oversold_adjusted:
-      break  # 如果没有调整，则提前结束迭代
-
-    iterations += 1
-  so_trigger_low, so_trigger_high = best_oversold, best_overbought
-  status_manager.update_status('so_trigger_low', so_trigger_low)
-  status_manager.update_status('so_trigger_high', so_trigger_high)
-  status_manager.update_status('sosold_lower_bound', sosold_lower_bound)
-  status_manager.update_status('sosold_upper_bound', sosold_upper_bound)
-  status_manager.update_status('sobought_lower_bound', sobought_lower_bound)
-  status_manager.update_status('sobought_upper_bound', sobought_upper_bound)
-  logger.info(f"更新后的so触发点：超卖阈值 {best_oversold}, 超买阈值 {best_overbought}")
-  return best_overbought, best_oversold, best_return
+      iterations += 1
+    status_manager.update_status('sosold_lower_bound', sosold_lower_bound)
+    status_manager.update_status('sosold_upper_bound', sosold_upper_bound)
+    status_manager.update_status('sobought_lower_bound', sobought_lower_bound)
+    status_manager.update_status('sobought_upper_bound', sobought_upper_bound)
+    logger.info(f"更新后的so触发点：超卖阈值 {best_oversold}, 超买阈值 {best_overbought}")
+    return best_overbought, best_oversold, best_return
+  except Exception as e:
+    logger.error(f"sobest出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    return 23, 84, None
+    
 
 
 # RSI计算（领先指标 (Leading Indicators)）
-def c_rsi(data, length):
+def c_rsi(interval, length):
   global kline_data_cache  #异步获取K线的数据
   try:
-    #data = copy.deepcopy(kline_data_cache[interval])
+    data = copy.deepcopy(kline_data_cache[interval])
+    current_price, _ = get_current_price(symbol)
     if current_price is not None:
       data[-1][4] = current_price
 
@@ -1251,8 +1322,8 @@ def c_rsi(data, length):
     rsi = 100 - (100 / (1 + rs))
     return rsi
   except Exception as e:
-    # 在这里处理可能引发的异常
     logger.error(f"RSI计算出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1271,7 +1342,7 @@ async def backtest_rsi(interval,
   global kline_data_cache  #异步获取K线的数据
   try:
     data = copy.deepcopy(kline_data_cache[interval])
-    rsi = c_rsi(data, length)
+    rsi = c_rsi(interval, length)
     if rsi is None:
       return None, None, None
 
@@ -1305,11 +1376,12 @@ async def backtest_rsi(interval,
     return best_oversold_threshold, best_overbought_threshold, best_return
   except Exception as e:
     logger.error(f"RSI计算出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
-async def rsibest():
-  global rsi_trigger_low, rsi_trigger_high, rsisold_lower_bound, rsisold_upper_bound, rsibought_lower_bound, rsibought_upper_bound
+async def rsibest(interval):
+  global rsi_trigger_low_5m, rsi_trigger_high_5m, rsisold_lower_bound, rsisold_upper_bound, rsibought_lower_bound, rsibought_upper_bound
 
   try:
     found_optimal = False
@@ -1344,10 +1416,6 @@ async def rsibest():
 
         if not expanded:
           # 找到最优值，更新参数并跳出循环
-          rsi_trigger_low = best_oversold
-          rsi_trigger_high = best_overbought
-          status_manager.update_status('rsi_trigger_low', rsi_trigger_low)
-          status_manager.update_status('rsi_trigger_high', rsi_trigger_high)
           status_manager.update_status('rsisold_lower_bound',
                                        rsisold_lower_bound)
           status_manager.update_status('rsisold_upper_bound',
@@ -1357,18 +1425,18 @@ async def rsibest():
           status_manager.update_status('rsibought_upper_bound',
                                        rsibought_upper_bound)
           logger.info(
-            f"更新后的RSI触发点：超卖阈值 {rsi_trigger_low}, 超买阈值 {rsi_trigger_high}")
+            f"更新后的RSI触发点：超卖阈值 {rsi_trigger_low_5m}, 超买阈值 {rsi_trigger_high_5m}")
           found_optimal = True
       else:
         logger.info(
-          f"维持原RSI触发点：超卖阈值 {rsi_trigger_low}, 超买阈值 {rsi_trigger_high}")
+          f"维持原RSI触发点：超卖阈值 {rsi_trigger_low_5m}, 超买阈值 {rsi_trigger_high_5m}")
         break  # 如果没有找到更优的阈值组合，跳出循环
 
       iterations += 1  # 增加迭代计数
 
     if iterations >= max_iterations:
       logger.info(
-        "达到最大迭代次数，结束搜索, 维持原RSI触发点：超卖阈值 {rsi_trigger_low}, 超买阈值 {rsi_trigger_high}"
+        "达到最大迭代次数，结束搜索, 维持原RSI触发点：超卖阈值 {rsi_trigger_low_5m}, 超买阈值 {rsi_trigger_high_5m}"
       )
 
       # 可以在这里返回最终确定的最优阈值和相关信息
@@ -1376,15 +1444,17 @@ async def rsibest():
 
   except Exception as e:
     logger.error(f"rsibest 函数运行时出现错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     # 可以选择返回默认值或者特定的错误指示
-    return rsi_trigger_low, rsi_trigger_high, None
+    return 40, 70, None
 
 
 # MFI计算
-def c_mfi(data, length):
+def c_mfi(interval, length):
   global kline_data_cache  #异步获取K线的数据
   try:
-    #data = copy.deepcopy(kline_data_cache[interval])
+    data = copy.deepcopy(kline_data_cache[interval])
+    #data = kline_data_cache[interval]
     if current_price is not None:
       data[-1][4] = current_price
 
@@ -1400,6 +1470,7 @@ def c_mfi(data, length):
   except Exception as e:
     # 在这里处理可能引发的异常
     logger.error(f"MFI计算出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1416,7 +1487,7 @@ async def backtest_mfi(interval,
   #return: 最佳MFI超卖、超买阈值和相应的回报率。
   try:
     data = copy.deepcopy(kline_data_cache[interval])
-    mfi = c_mfi(data, mfi_length)
+    mfi = c_mfi(interval, mfi_length)
     if mfi is None:
       return None, None, None
 
@@ -1451,11 +1522,12 @@ async def backtest_mfi(interval,
     return best_mfi_low, best_mfi_high, best_return
   except Exception as e:
     logger.error(f"backtest_mfi出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
-async def mfibest():
-  global mfi_trigger_low, mfi_trigger_high, mfi_low_lower_bound, mfi_low_upper_bound, mfi_high_lower_bound, mfi_high_upper_bound
+async def mfibest(interval):
+  global mfi_low_lower_bound, mfi_low_upper_bound, mfi_high_lower_bound, mfi_high_upper_bound
   try:
     initial_mfi_low_lower_bound = mfi_low_lower_bound
     initial_mfi_low_upper_bound = mfi_low_upper_bound
@@ -1508,8 +1580,6 @@ async def mfibest():
 
           if not expanded:
             # 更新状态管理器中的状态
-            update_status('mfi_trigger_low', best_mfi_low)
-            update_status('mfi_trigger_high', best_mfi_high)
             status_manager.update_status('mfi_low_lower_bound',
                                          mfi_low_lower_bound)
             status_manager.update_status('mfi_low_upper_bound',
@@ -1535,7 +1605,8 @@ async def mfibest():
 
   except Exception as e:
     logger.error(f"mfibest出错: {e}")
-    return best_mfi_low, best_mfi_high, best_return
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    return 38, 77, None
 
 
 # EMA计算
@@ -1549,6 +1620,7 @@ def c_ema(interval, length):
     return close_prices.ewm(span=length, adjust=False).mean()
   except Exception as e:
     logger.error(f"EMA计算出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series()
 
 
@@ -1571,6 +1643,7 @@ def c_macd(interval, fastperiod, slowperiod, signalperiod):
     return macd, signal
   except Exception as e:
     logger.error(f"在c_macd中发生异常：{e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series(), pd.Series()
 
 
@@ -1641,7 +1714,7 @@ async def macdbest():
   while True:
     # 执行MACD回测
     current_best_params, current_best_return = await backtest_macd(
-      interval, fastperiod_range, slowperiod_range, signalperiod_range)
+      interval_5m, fastperiod_range, slowperiod_range, signalperiod_range)
     testmacd += 1
     logger.info(f"testmacd{testmacd}")
     # 检查是否找到更好的参数组合
@@ -1720,6 +1793,9 @@ def c_support_resistance(interval):
     return pivot_point.iloc[-1], support.iloc[-1], resistance.iloc[-1]
   except Exception as e:
     logger.error(f"在c_support_resistance中发生异常：{e}")
+    traceback.print_exc()
+      # 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
@@ -1743,6 +1819,7 @@ def c_atr(interval, period=14):
     return atr.iloc[-1]
   except Exception as e:
     logger.error(f"在c_atr中发生异常：{e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1759,8 +1836,8 @@ def c_ssbb(interval):
       kline_data[-1][4] = current_price
 
     if kline_data:
-      rsi = c_rsi(kline_data, 14)
-      mfi = c_mfi(kline_data, 14)
+      rsi = c_rsi(interval, 14)
+      mfi = c_mfi(interval, 14)
       # 设置RSI和MFI的权重
       rsi_weight = 0.4
       mfi_weight = 0.6
@@ -1797,6 +1874,7 @@ def c_ssbb(interval):
       return pd.Series(), pd.Series()
   except Exception as e:
     logger.error(f"计算v_ssbb时出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series(), pd.Series()
 
 
@@ -1806,7 +1884,7 @@ score_cache = {'last_score': None, 'last_calc_period': None}
 def calculate_score(conditions_enabled):
   global temp_ssbb, score_cache
   current_time = datetime.now()
-  # 计算当前时间所在的3分钟周期
+  # 计算当前时间所在的x分钟周期
   current_period = (current_time.hour * 60 + current_time.minute) // 1
 
   # 检查是否在新的一分钟内第一次调用
@@ -1815,43 +1893,43 @@ def calculate_score(conditions_enabled):
     logger.info(f"{current_period}已调用，返回{score_cache['last_score']}")
     return score_cache['last_score']
 
-  data = kline_data_cache[interval]
+  data = kline_data_cache[interval_5m]
   if not data:
     logger.error("无K线数据")
     return temp_ssbb, 0  # 返回当前的 ssbb 和 sbsb=0
   if current_price is not None:
     data[-1][4] = current_price
   # 计算技术指标
-  rsi = c_rsi(data, 14)
-  mfi = c_mfi(data, 14)
-  ema5 = c_ema(interval, 5)
-  macd, signal = c_macd(interval_ssbb, fastperiod, slowperiod, signalperiod)
-  percent_k, percent_d = c_so(data, 14, 3)
-  v_ssbb, v_sbsb = c_ssbb(interval_ssbb)
+  rsi = c_rsi(interval_5m, 14)
+  mfi = c_mfi(interval_5m, 14)
+  ema5 = c_ema(interval_5m, 5)
+  macd, signal = c_macd(interval_ssbb_3m, fastperiod, slowperiod, signalperiod)
+  percent_k, percent_d = c_so(interval_5m, 14, 3)
+  v_ssbb, v_sbsb = c_ssbb(interval_ssbb_3m)
   score = 0
   current_order_direction = 'BUY' if v_ssbb.iloc[-1] == 1 else 'SELL'
   conditions = [
     # ssbb 和 sbsb 逻辑
     # 领先指标 RSI MFI Stochastic Oscillator ssbb
     (conditions_enabled['technical_indicators'],
-     rsi.iloc[-1] < rsi_trigger_low, 25,
-     f"RSI {rsi.iloc[-1]:.2f} 低于 {rsi_trigger_low}，加25分"),
+     rsi.iloc[-1] < rsi_trigger_low_5m, 25,
+     f"RSI {rsi.iloc[-1]:.2f} 低于 {rsi_trigger_low_5m}，加25分"),
     (conditions_enabled['technical_indicators'],
-     rsi.iloc[-1] > rsi_trigger_high, -25,
-     f"RSI {rsi.iloc[-1]:.2f} 超过 {rsi_trigger_high}，减25分"),
+     rsi.iloc[-1] > rsi_trigger_high_5m, -25,
+     f"RSI {rsi.iloc[-1]:.2f} 超过 {rsi_trigger_high_5m}，减25分"),
     (conditions_enabled['technical_indicators'],
-     mfi.iloc[-1] < mfi_trigger_low, 25,
-     f"MFI {mfi.iloc[-1]:.2f} 低于 {mfi_trigger_low}，加25分"),
+     mfi.iloc[-1] < mfi_trigger_low_5m, 50,
+     f"MFI {mfi.iloc[-1]:.2f} 低于 {mfi_trigger_low_5m}，加50分"),
     (conditions_enabled['technical_indicators'],
-     mfi.iloc[-1] > mfi_trigger_high, -25,
-     f"MFI {mfi.iloc[-1]:.2f} 超过 {mfi_trigger_high}，减25分"),
+     mfi.iloc[-1] > mfi_trigger_high_5m, -50,
+     f"MFI {mfi.iloc[-1]:.2f} 超过 {mfi_trigger_high_5m}，减50分"),
     (conditions_enabled['technical_indicators'],
      percent_k.iloc[-1] > percent_d.iloc[-1]
-     and percent_k.iloc[-1] < so_trigger_high, 25,
+     and percent_k.iloc[-1] < so_trigger_high_5m, 25,
      f"%K {percent_k.iloc[-1]:.2f} 大于%D {percent_d.iloc[-1]:.2f}，且未超买，加25分"),
     (conditions_enabled['technical_indicators'],
      percent_k.iloc[-1] < percent_d.iloc[-1]
-     and percent_k.iloc[-1] > so_trigger_low, -25,
+     and percent_k.iloc[-1] > so_trigger_low_5m, -25,
      f"%K {percent_k.iloc[-1]:.2f} 小于%D {percent_d.iloc[-1]:.2f}，且未超卖，减25分"),
     (conditions_enabled['ssbb_logic'], v_sbsb.iloc[-1] == 1
      and v_ssbb.iloc[-1] == 1, 50, "ssbb逻辑，加50分"),
@@ -1960,19 +2038,19 @@ def calculate_composite_score(current_price, last_order_price,
                               last_s_order_price, stop_loss_limit,
                               take_profit_limit):
   global temp_ssbb
-  data = kline_data_cache[interval]
+  data = kline_data_cache[interval_5m]
   if not data:
     logger.error("无K线数据")
     return temp_ssbb, 0  # 返回当前的 ssbb 和 sbsb=0
   if current_price is not None:
     data[-1][4] = current_price
   # 计算技术指标
-  rsi = c_rsi(data, 14)
-  mfi = c_mfi(data, 14)
-  ema5 = c_ema(interval, 5)
-  macd, signal = c_macd(interval_ssbb, fastperiod, slowperiod, signalperiod)
-  percent_k, percent_d = c_so(data, 14, 3)
-  v_ssbb, v_sbsb = c_ssbb(interval_ssbb)
+  rsi = c_rsi(interval_5m, 14)
+  mfi = c_mfi(interval_5m, 14)
+  ema5 = c_ema(interval_5m, 5)
+  macd, signal = c_macd(interval_ssbb_3m, fastperiod, slowperiod, signalperiod)
+  percent_k, percent_d = c_so(interval_5m, 14, 3)
+  v_ssbb, v_sbsb = c_ssbb(interval_ssbb_3m)
   ssbb, sbsb = int(v_ssbb.iloc[-1]), int(v_sbsb.iloc[-1])
   logger.info(f"******** 网格系统 ********")
 
@@ -1994,15 +2072,24 @@ def calculate_composite_score(current_price, last_order_price,
     #initial_margin: 初始保证金 start_price: 起始价格 amplitude: 波动幅度（百分比）add_amount: 每次增加的头寸数量 leverage: 马丁系数 trade_direction: 交易方向，'BUY' 表示买入（多头），'SELL' 表示卖出（空头）。默认为 'BUY'。
     global max_position_size_long, max_position_size_short
     current_price_l = start_price_l
-    total_quantity_l = long_position if trade_direction_l == 'BUY' else short_position
+    total_quantity_l = long_position - short_position if trade_direction_l == 'BUY' else short_position - long_position
     total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY'
                                        else short_cost)
-
-    while True:
+    max_iterations = 100  # 设置最大迭代次数作为安全退出的条件
+    iteration_count = 0  # 初始化迭代计数器
+    while iteration_count < max_iterations:
+      iteration_count += 1  # 每次循环迭代计数器加1
+      if add_amount_l == 0:
+        print(f"添加量{add_amount_l}必须不为0")
+        logger.info(f"添加量{add_amount_l}必须不为0")
+        break  # 退出循环
       # 增加头寸
       total_quantity_l += add_amount_l
+      if total_quantity_l == 0:
+        total_quantity_l += add_amount_l
       total_cost_l += add_amount_l * current_price_l
       # 计算平均成本
+      #logger.info(f"总成本:{total_cost_l}, 总量:{total_quantity_l}")
       average_cost_l = total_cost_l / total_quantity_l
       # 根据交易方向计算亏损
       if trade_direction_l == 'BUY':
@@ -2013,14 +2100,14 @@ def calculate_composite_score(current_price, last_order_price,
         raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
       # 检查亏损是否超过初始保证金
       if loss_l > initial_margin_l:
-        if max_position_size_long != round((total_quantity_l / 2), dpq) and trade_direction_l == 'BUY':
+        if max_position_size_long != round((total_quantity_l * LongRisk), dpq) and trade_direction_l == 'BUY':
           logger.info(f"原多单风控:{max_position_size_long}")
-          max_position_size_long = round((total_quantity_l / 2), dpq)
+          max_position_size_long = round((total_quantity_l * LongRisk), dpq)
           status_manager.update_status('max_position_size_long', max_position_size_long)
           logger.info(f"多单风控仓位{max_position_size_long}")
-        elif max_position_size_short != round((total_quantity_l / 10), dpq) and trade_direction_l == 'SELL':
+        elif max_position_size_short != round((total_quantity_l * ShortRisk), dpq) and trade_direction_l == 'SELL':
           logger.info(f"原空单风控:{max_position_size_short}")
-          max_position_size_short = round((total_quantity_l / 10), dpq)
+          max_position_size_short = round((total_quantity_l * ShortRisk), dpq)
           status_manager.update_status('max_position_size_short', max_position_size_short)
           logger.info(f"空单风控仓位{max_position_size_short}")
         logger.info(f"{loss_l:.{dpq}f} > {initial_margin_l:.{dpq}f}")
@@ -2033,6 +2120,7 @@ def calculate_composite_score(current_price, last_order_price,
         current_price_l += (current_price_l * amplitude_percent_l) * leverage_l
       else:
         raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
+        break
 
 # 网格思路预筛
 
@@ -2048,42 +2136,46 @@ def calculate_composite_score(current_price, last_order_price,
     # 辅助函数，检查价格变化是否显著
     def is_price_change_significant(current_price, ref_price):
       global average_short_cost, average_long_cost
-      price_change_ratio = abs(current_price - ref_price) / max(
-        current_price, ref_price)
-      current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
+      price_change_ratio = abs(current_price - ref_price) / max(current_price, ref_price)
       significant_change = False
+      trade_method = ""
+      current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
+      
       liquidation_price = calculate_liquidation_price(
         initial_margin, current_price, FP, quantity_grid, 1,
         current_order_direction)  # 买入，多头
-      logger.info(f'{current_order_direction}爆仓价格: {liquidation_price}')
+      
       # 通过一个简化的逻辑表达式来判断价格变化是否显著
-      if last_order_direction == current_order_direction:
-        if (current_price < ref_price * (1 - FP) and last_order_direction == 'BUY') or \
-           (current_price > ref_price * (1 + FP) and last_order_direction == 'SELL'):
-          significant_change = True
-          logger.info(f"{ref_price}追{current_order_direction}{current_price}")
-      else:
-        if average_short_cost == 0 and average_long_cost == 0:
-          if last_order_direction == 'BUY':
-            average_long_cost = ref_price
-            logger.info(f"初始化最近多单成本{average_long_cost}")
-          else:
-            average_short_cost = ref_price
-            logger.info(f"初始化最近空单成本{average_long_cost}")
-        new_ref_price = ref_price if (
-          average_short_cost == 0 and average_long_cost == 0) else (
-            average_long_cost
-            if last_order_direction == 'BUY' else average_short_cost)
-        if new_ref_price != ref_price:
-          ref_price = new_ref_price
-          logger.info(
-            f"价格变化方向不同，更新ref_price为{round(ref_price, dpp)}，加多成本{average_long_cost}，加空成本{average_short_cost}"
-          )
-        if (current_price > ref_price * (1 + FP) and last_order_direction == 'BUY') or \
-           (current_price < ref_price * (1 - FP) and last_order_direction == 'SELL'):
-          significant_change = True
-          logger.info(f"{ref_price}获利{current_order_direction}{current_price}")
+      if abs(price_change_ratio) > FP:
+        # 当上一次和这一次的交易方向相同
+        if last_order_direction == current_order_direction:
+            if current_order_direction == 'BUY':
+                if current_price > ref_price:
+                    trade_method = "高价追买"
+                    significant_change = False  # 高价追买不视为显著变化
+                else:
+                    trade_method = "低价追买"
+                    significant_change = True
+            elif current_order_direction == 'SELL':
+                if current_price < ref_price:
+                    trade_method = "低价追卖"
+                    significant_change = False  # 低价追卖不视为显著变化
+                else:
+                    trade_method = "高价追卖"
+                    significant_change = True
+        # 当上一次和这一次的交易方向不同
+        else:
+            if current_order_direction == 'BUY':
+                trade_method = "亏损买平" if current_price > ref_price else "盈利买平"
+                significant_change = False if current_price > ref_price else True
+            elif current_order_direction == 'SELL':
+                trade_method = "亏损卖平" if current_price < ref_price else "盈利卖平"
+                significant_change = False if current_price < ref_price else True
 
+      if significant_change:
+        logger.info(f"相对{ref_price}，以{current_price}{trade_method}")
+      else:
+        logger.info(f"相对{ref_price}，禁止{current_price}{trade_method}")
       return significant_change, price_change_ratio
 
     def make_decision(action, significant_change, sbsb_value, ssbb_value):
@@ -2116,7 +2208,7 @@ def calculate_composite_score(current_price, last_order_price,
 
     logger.info(f"决策：{action}")
     logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
-    logger.info(f"价格变化比：{price_change_ratio:.2%}")
+    logger.info(f"价格变化比：{price_change_ratio:.2%}触发比{FP:.2f}")
     logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
 
   # 确定是否更新 ssbb
@@ -2126,25 +2218,46 @@ def calculate_composite_score(current_price, last_order_price,
     logger.info(f"ssbb updated to {ssbb}")
 
   global min_quantity
-  if min_quantity != math.ceil(min_quantity_u / current_price):
-    if min_quantity_u >= 5:
-      min_quantity = math.ceil(min_quantity_u / current_price)
-      print(f"更新最小增仓量：{min_quantity}")
-      status_manager.update_status('min_quantity', min_quantity)
-  global quantity_grid
-  if quantity_grid != math.ceil(quantity_grid_u / current_price):
-    if quantity_grid_u >= 5:
-      quantity_grid = math.ceil(quantity_grid_u / current_price)
-      print(f"更新单位网格量：{quantity_grid}")
-      status_manager.update_status('quantity_grid', quantity_grid)
+  if min_quantity_u >= 5:
+    calculated_min_quantity = math.ceil(min_quantity_u / current_price)
+    if min_quantity != calculated_min_quantity:
+        min_quantity = calculated_min_quantity
+        print(f"更新最小增仓量：{min_quantity}")
+        status_manager.update_status('min_quantity', min_quantity)
+  global quantity_grid, quantity_grid_u
+  # 计算可能用到的值
+  absolute_position_difference = abs(long_position - short_position)
+  calculated_quantity_grid_based_on_rate = math.ceil(quantity_grid_rate * 0.01 * absolute_position_difference)
+  calculated_quantity_grid_based_on_u = math.ceil(quantity_grid_u / current_price)
+  calculated_quantity_grid_for_min = math.ceil(min_quantity_u / current_price)
+  if quantity_grid_u < 5:
+    quantity_grid_u = 5
+# 检查并更新quantity_grid
+  if quantity_grid_rate > 0 and calculated_quantity_grid_based_on_rate > max(quantity_grid, min_quantity):
+    if quantity_grid != calculated_quantity_grid_based_on_rate:
+        quantity_grid = calculated_quantity_grid_based_on_rate
+        print(f"更新单位网格量1：{quantity_grid}")
+        status_manager.update_status('quantity_grid', quantity_grid)
+  elif quantity_grid_u > 5:
+    if quantity_grid != calculated_quantity_grid_based_on_u:
+        quantity_grid = calculated_quantity_grid_based_on_u
+        print(f"更新单位网格量2：{quantity_grid}")
+        status_manager.update_status('quantity_grid', quantity_grid)
+  else:
+    if quantity_grid < calculated_quantity_grid_for_min:  # 仅当quantity_grid小于计算得到的最小值时更新
+        quantity_grid = calculated_quantity_grid_for_min
+        print(f"更新单位网格量3：{quantity_grid}")
+        status_manager.update_status('quantity_grid', quantity_grid)
+
   return ssbb, sbsb  # 返回 ssbb 和 sbsb 的值
 
-
+continuous_add_count_lb = 0
+continuous_add_count_ss = 0
 # 计算下一个买单的参数,leverage杠杆倍数暂时没有用
-def calculate_next_order_parameters(price, leverage):
-  global last_order_direction
+def calculate_next_order_parameters(price, leverage, order_position):
+  global last_order_direction, continuous_add_count_lb, continuous_add_count_ss
   try:
-    #    next_price = round(price * (1 - Slippage if ssbb == 1 else 1 + Slippage), dpp)
+    #    order_position = 'lb'
     next_price = round(price, dpp)  #
     reference_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
 
@@ -2152,28 +2265,42 @@ def calculate_next_order_parameters(price, leverage):
       grid_ratio = max(current_price, reference_price) / min(
         current_price, reference_price)
       grid_count = int(math.log(grid_ratio) / math.log(1 + FP))
+      logger.info(f"优化前网格数量: {grid_count}")
+      grid_count = (1 / (1 + math.exp(- grid_count / 6)) - 0.5) * 2 * 15
+      logger.info(f"Sigmoid优化网格数量: {grid_count:.1f}\n")
+      #www.desmos.com/calculator?lang=zh-TW 
+      #y=\left(1/\left(1+e^{\left(-\frac{x}{6}\right)}\right)-0.5\right)\cdot30
     elif reference_price == 0:
       grid_count = 1
       logger.info(f"首次{last_order_direction}下单: {grid_count}\n")
     else:
       grid_count = 0  #差异小于阈值FP
       logger.info(f"差异小于阈值FP: {grid_count}\n")
-    if grid_count > 10:
-      logger.info(f"grid:{grid_count}/{grid_ratio}/{1 + FP}")
-      grid_count = 10
+    
     # 根据网格数量调整下单量
-    if current_price > reference_price:
-       origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
-    else:
-       origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
+
+    if order_position == 'lb' :
+      continuous_add_count_lb += 1
+      continuous_add_count_ss = 0
+      origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
+    elif order_position == 'ss':
+      continuous_add_count_lb = 0
+      continuous_add_count_ss += 1
+      origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
+    logger.info(f"优化前交易量: {origQty}")
+    origQty = max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity)
+    logger.info(f"Sigmoid优化交易量: {origQty}")
+    status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
+    status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
     return next_price, origQty
   except Exception as e:
     logger.error(f"执行calculate_next_order_parameters出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None  # 确保在出错的情况下返回两个值
 
 
 def adjust_quantity(ad_quantity):
-  
+
   #调整下单量以满足最小值和步进要求。:param quantity: 原始下单量"""
 
   # 确保下单量至少为最小值
@@ -2201,44 +2328,92 @@ def update_order_status(response, position):
     logger.info(f"cpo成功{response['side']}：{update_price}")
     update_position_cost(update_price, quantity_response,
                          response['positionSide'], response['side'])
-    if response['side'] == 'BUY':
-      if last_order_direction == 'SELL':
-        average_short_cost, average_short_position = 0, 0
-        average_long_cost, average_long_position = update_price, quantity_response
-      else:
-        #  logger.info(f"类型 - update_price: {type(update_price)}, quantity_response: {type(quantity_response)}, average_long_cost: {type(average_long_cost)}, average_long_position: {type(average_long_position)}")
-        logger.info(
-          f"值 - update_price: {update_price}, quantity_response: {quantity_response}, average_long_cost: {average_long_cost}, average_long_position: {average_long_position}"
-        )
+    def update_position_costs_and_quantities(response_side, last_order_direction, update_price, quantity_response, transaction_fee_rate, dpp, average_long_cost, average_long_position, average_short_cost, average_short_position, logger):
+      """
+      更新多头和空头的平均成本及持仓量。
 
-        average_long_cost, average_long_position = (round(
-          (average_long_cost * average_long_position +
-           update_price * quantity_response) /
-          (average_long_position + quantity_response),
-          dpp), (average_long_position +
-                 quantity_response)) if average_long_cost != 0 else (
-                   update_price, quantity_response)
-        logger.info(
-          f"值 - average_long_cost: {average_long_cost}, average_long_position: {average_long_position}"
-        )
-    else:
-      if last_order_direction == 'BUY':
-        average_long_cost, average_long_position = 0, 0
-        average_short_cost, average_short_position = update_price, quantity_response
-      else:
-        logger.info(
-          f"值 - average_short_cost: {average_short_cost}, average_short_position: {average_short_position}"
-        )
-        average_short_cost, average_short_position = (round(
-          (average_short_cost * average_short_position +
-           update_price * quantity_response) /
-          (average_short_position + quantity_response),
-          dpp), (average_short_position +
-                 quantity_response)) if average_short_cost != 0 else (
-                   update_price, quantity_response)
-        logger.info(
-          f"值 - average_short_cost: {average_short_cost}, average_short_position: {average_short_position}"
-        )
+      参数:
+      - response_side: 当前订单方向（'BUY' 或 'SELL'）
+      - last_order_direction: 上一次的订单方向
+      - update_price: 当前订单的价格
+      - quantity_response: 当前订单的数量
+      - transaction_fee_rate: 交易费率
+      - dpp: 小数点后的位数（用于round）
+      - average_long_cost: 多头的平均成本
+      - average_long_position: 多头的持仓量
+      - average_short_cost: 空头的平均成本
+      - average_short_position: 空头的持仓量
+      - logger: 日志记录器
+      """
+      if response_side == 'BUY':
+          if last_order_direction == 'SELL':
+              # 重置空头持仓
+              average_short_cost, average_short_position = 0, 0
+              average_long_cost = update_price * (1 + transaction_fee_rate)
+              average_long_position = quantity_response
+          else:
+              new_total_cost = (average_long_cost * average_long_position + update_price * quantity_response * (1 + transaction_fee_rate))
+              new_total_quantity = average_long_position + quantity_response
+              average_long_cost = round(new_total_cost / new_total_quantity, dpp) if new_total_quantity > 0 else 0
+              average_long_position = new_total_quantity
+
+      else:  # response_side == 'SELL'
+          if last_order_direction == 'BUY':
+              # 重置多头持仓
+              average_long_cost, average_long_position = 0, 0
+              average_short_cost = update_price * (1 - transaction_fee_rate)
+              average_short_position = quantity_response
+          else:
+              new_total_cost = (average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate))
+              new_total_quantity = average_short_position + quantity_response
+              average_short_cost = round(new_total_cost / new_total_quantity, dpp) if new_total_quantity > 0 else 0
+              average_short_position = new_total_quantity
+
+      logger.info(f"更新后的持仓 - 多头成本: {average_long_cost}, 多头持仓: {average_long_position}, 空头成本: {average_short_cost}, 空头持仓: {average_short_position}")
+      return average_long_cost, average_long_position, average_short_cost, average_short_position
+      
+    def update_position(side, update_price, quantity_response, transaction_fee_rate, 
+                     average_long_cost, average_long_position, average_short_cost, average_short_position):
+      if side == 'BUY':
+          # 增加多头或减少空头
+          if average_short_position > 0:
+              # 减少空头仓位
+              reduced_quantity = min(average_short_position, quantity_response)
+              average_short_position -= reduced_quantity
+              quantity_response -= reduced_quantity
+              # 如果完全平掉空头仓位，重置平均成本
+              if average_short_position == 0:
+                  average_short_cost = 0
+              if quantity_response <= 0:
+                  return average_long_cost, average_long_position, average_short_cost, average_short_position
+          # 增加多头仓位
+          total_cost = average_long_cost * average_long_position + update_price * quantity_response * (1 + transaction_fee_rate)
+          average_long_position += quantity_response
+          average_long_cost = total_cost / average_long_position if average_long_position > 0 else 0
+
+      elif side == 'SELL':
+          # 增加空头或减少多头
+          if average_long_position > 0:
+              # 减少多头仓位
+              reduced_quantity = min(average_long_position, quantity_response)
+              average_long_position -= reduced_quantity
+              quantity_response -= reduced_quantity
+              # 如果完全平掉多头仓位，重置平均成本
+              if average_long_position == 0:
+                  average_long_cost = 0
+              if quantity_response <= 0:
+                  return average_long_cost, average_long_position, average_short_cost, average_short_position
+          # 增加空头仓位
+          total_cost = average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate)
+          average_short_position += quantity_response
+          average_short_cost = total_cost / average_short_position if average_short_position > 0 else 0
+
+      return average_long_cost, average_long_position, average_short_cost, average_short_position
+    
+    average_long_cost, average_long_position, average_short_cost, average_short_position = update_position(response['side'], update_price, quantity_response, transaction_fee_rate, 
+       average_long_cost, average_long_position, average_short_cost, average_short_position)
+    
+    logger.info(f"更新后的持仓 - 多头成本: {average_long_cost},{average_long_position} \n 更新后的持仓 - 空头成本: {average_short_cost},{average_short_position}")
     status_manager.update_status('average_long_cost', average_long_cost)
     status_manager.update_status('average_short_cost', average_short_cost)
     status_manager.update_status('average_long_position',
@@ -2261,9 +2436,9 @@ def update_order_status(response, position):
     if quantity != math.ceil(quantity_u / current_price):
       if quantity_u >= 5:
         quantity = math.ceil(quantity_u / current_price)
-        print(f"更新最小增仓量：{quantity}")
+        print(f"更新单格量：{quantity}")
         status_manager.update_status('quantity', quantity)
-        
+
     quantity = float(quantity - min_quantity) * float(
       martingale) + min_quantity  #单位交易量，网格quantity_grid，对冲add_position
     status_manager.update_status('quantity', quantity)
@@ -2305,7 +2480,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, client, logger, FP, last_order_direction
   logger.info(f"#######################")
   logger.info(f"=======调用下单========")
-  logger.info(f"#########{position}############")
+  logger.info(f"###{price}#{position}#{quantitya}###")
   logger.info(f"=======================")
   if is_paused:
     logger.info("脚本暂停执行")
@@ -2313,14 +2488,22 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   if position not in ['lb', 'ss']:
     logging.error(f"无效的订单意图：{position}")
     return
-  if (position == 'lb' and long_position - short_position + quantitya > max_position_size_long) or \
-   (position == 'ss' and short_position - long_position + quantitya > max_position_size_short):
-    logging.error(
-      f"{position}风控{max_position_size_long if position == 'lb' else max_position_size_short}：多:{long_position} 空:{short_position}")
-    return
-  if position == 'ss' and long_position - short_position - quantitya < quantity_grid:
-    logging.error(f"维持多单持仓：{long_position}")
-    return 
+  adjusted_quantity = quantitya
+  if position == 'lb':
+      max_allowed = max_position_size_long - (long_position - short_position)
+      if quantitya > max_allowed:
+          logging.warning(f"多单风控调整：原始数量{quantitya}，调整后{max_allowed}")
+          adjusted_quantity = max_allowed
+  elif position == 'ss':
+      max_allowed = max_position_size_short - (short_position - long_position)
+      if quantitya > max_allowed:
+          logging.warning(f"空单风控调整：原始数量{quantitya}，调整后{max_allowed}")
+          adjusted_quantity = max_allowed
+  # 确保调整后的数量不为负
+  quantity = max(0, adjusted_quantity)
+  if quantity == 0:
+      logging.error(f"{position}风控触发，无法调整下单量至正值。多仓：{long_position}，空仓：{short_position}")
+      return 
   if callback < Slippage * 100:
     callback = min(Slippage * 100, 0.4)
 
@@ -2501,6 +2684,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
 
   except Exception as e:
     logger.error(f"Unexpected error: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     logger.info(f"暂停5,12s")
     time.sleep(12)
 
@@ -2519,6 +2703,7 @@ def query_order(order_id):
     )
   except Exception as e:
     logger.error(f"查询订单时发生未预期的错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 def handle_client_error(error, current_price, order_params):
@@ -2621,6 +2806,7 @@ def dynamic_tracking(symbol,
     return start_price_reached, trade_executed, optimal_price, trade_quantity
   except Exception as e:
     logger.error(f"执行动态追踪时发生错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return False, True, optimal_price, trade_quantity
 
 
@@ -2691,6 +2877,7 @@ def breakeven_stop_profit(symbol,
     return start_price_reached, trade_executed, trade_quantity
   except Exception as e:
     logger.error(f"执行保本止盈时发生错误: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     return False, True, trade_quantity
 
 
@@ -2702,9 +2889,9 @@ def trading_strategy():
     if trading_strategy_enabled == 0:
       logger.info("交易策略未启用")
       return
-    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(max(5.1, add_position_u) / current_price)):
-      add_position = max(math.ceil(add_position_rate * add_rate * long_position if starta_direction == "lb" else short_position), math.ceil(max(5.1, add_position_u) / current_price))
-      logger.info(f"当前{round(add_position_rate * add_rate, 3)}更新单位对冲量：{add_position}")
+    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price)):
+      add_position = max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price))
+      logger.info(f"当前{round(add_position_rate * 0.01, 3)}更新单位对冲量：{add_position}")
       status_manager.update_status('add_position', add_position)
     if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
       if add_position_u >= 5:
@@ -3017,6 +3204,8 @@ def trading_strategy():
   except Exception as e:
     logger.error(f"执行trading_strategy时发生错误: {e}")
     traceback.print_exc()
+# 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 #调用本地函数
@@ -3048,6 +3237,9 @@ def execute_config_file(config_file_path):
     logger.error(f"{config_file}中的语法错误: {e}")
   except Exception as e:
     logger.error(f"读取{config_file}时发生错误: {e}")
+    traceback.print_exc()
+# 记录完整的堆栈跟踪
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def fetch_and_update_config():
@@ -3102,6 +3294,7 @@ async def fetch_and_update_config():
       logger.error("未能找到更新时间标签。")
   except Exception as e:
     logger.error(f"更新或执行加载配置时出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def schedule_config_updates():
@@ -3113,36 +3306,50 @@ async def schedule_config_updates():
 
 def get_max_limit():
   try:
-    max_limit = max(len(kline_data_cache.get(interval, [])),
-                    len(kline_data_cache.get(interval_ssbb, [])), limit,
+    max_limit = max(len(kline_data_cache.get(interval_5m, [])),
+                    len(kline_data_cache.get(interval_ssbb_3m, [])), limit,
                     limit_test)
     logger.info(f"最大 limit calculated: {max_limit}")
     return max_limit
   except Exception as e:
     logger.info(f"get_max_limit出错: {e}")
+    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def run_periodic_tasks():
-  global last_config_update_time, current_time
+  global last_config_update_time, current_time, mfi_trigger_low_5m, mfi_trigger_high_5m
   last_config_update_time = price_to_datetime(last_config_update_time_str)
   while True:
     try:
       current_time = datetime.now()
       if current_time.minute % 2 == 1:
         await fetch_and_update_config()
-      if current_time.minute % 1440 == 2:
+      if current_time.hour == 0 and current_time.minute == 2:
         # 在执行任务前，重新加载数据
         max_limit = get_max_limit()
-        await cache_kline_data(symbol, [interval, interval_ssbb], max_limit)
+        await cache_kline_data(symbol, [interval_5m, interval_ssbb_3m], max_limit)
 
         # 创建并执行任务
         logger.info(f"异步开始")
-        await rsibest()
-        await mfibest()
-        await sobest()
+        
+        rsi_trigger_low_5m, rsi_trigger_high_5m, _ = await rsibest(interval_5m)
+        status_manager.update_status('rsi_trigger_low_5m', rsi_trigger_low_5m)
+        status_manager.update_status('rsi_trigger_high_5m', rsi_trigger_high_5m)
+        
+        mfi_trigger_low_5m, mfi_trigger_high_5m, _ = await mfibest(interval_5m)
+        logger.info(f"更21新{mfi_trigger_low_5m}/{mfi_trigger_high_5m}")
+        status_manager.update_status('mfi_trigger_low_5m', mfi_trigger_low_5m)
+        status_manager.update_status('mfi_trigger_high_5m', mfi_trigger_high_5m)
+        
+        so_trigger_low_5m, so_trigger_high_5m, _ = await sobest(interval_5m)
+        status_manager.update_status('so_trigger_low_5m', so_trigger_low_5m)
+        status_manager.update_status('so_trigger_high_5m', so_trigger_high_5m)
 
     except Exception as e:
       logger.error(f"在运行周期性任务时出现错误: {e}")
+      traceback.print_exc()
+      # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
     finally:
       logger.info(f"暂停8,{60}")
       await asyncio.sleep(60)
@@ -3156,13 +3363,14 @@ async def main():
 
 # 主交易逻辑
 async def main_loop():
-  global interval, current_price, ssbb, sbsb, last_price_update_time
+  global intervals, current_price, ssbb, sbsb, last_price_update_time
   start_time = datetime.now()
   last_price_update_time = price_to_datetime(last_price_update_time_str)
   start_price, last_price_update_time = get_current_price(symbol)
   logger.info(f"开始价格: {start_price}")
 
-  intervals = [interval, interval_ssbb]
+  intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
+
   await cache_kline_data(symbol, intervals, limit_test)
   fetch_and_update_active_orders(symbol)  # 加载订单记录
   current_price = start_price
@@ -3176,7 +3384,8 @@ async def main_loop():
         break
       await update_kline_data_async(symbol, current_time)
       current_price, last_price_update_time = get_current_price(symbol)
-      trading_strategy()
+      if trading_strategy_enabled == 1:
+         trading_strategy()
       ssbb, sbsb = calculate_composite_score(current_price, last_order_price,
                                              last_s_order_price,
                                              stop_loss_limit,
@@ -3184,9 +3393,9 @@ async def main_loop():
       #  logger.info(f"config后sbsb: {sbsb},ssbb: {ssbb}\n")
       if sbsb == 1:
         current_price, last_price_update_time = get_current_price(symbol)
-        order_price, origQty = calculate_next_order_parameters(
-          current_price, leverage)
         order_position = 'lb' if ssbb == 1 else 'ss'
+        order_price, origQty = calculate_next_order_parameters(
+          current_price, leverage, order_position)
         #      response = place_limit_order(symbol, order_position, order_price, origQty, 100 * Slippage)
         response = place_limit_order(symbol, order_position, 'QUEUE_5', origQty,
                                      100 * Slippage)
@@ -3195,12 +3404,13 @@ async def main_loop():
           logger.info(f"网格系统下单成功")
       current_status()
 
-      beta() #测试代码
+      #beta() #测试代码
 
       logger.info(f"暂停9,{monitoring_interval}")
       await asyncio.sleep(monitoring_interval)  # 等待一分钟
       if current_time.minute % 2 == 1:
         run_powershell_script('112.ps1')
+      status_manager.update_status('Last_heartbeat_time', current_time)
     except ClientError as error:
       logger.error(f"主循环运行时错误: {error}")
       # 记录完整的堆栈跟踪
@@ -3223,7 +3433,7 @@ def beta():
     price = (price1 * 0.8) if position == 'lb' else (price1 * 1.2)
     quantitya = min_quantity
     callback = 0.1
-    response = client.get_position_risk(symbol=symbol)
+    response = client.commission_rate(symbol=symbol)
     #CKBUSDTRATE = float(response["takerCommissionRate"])
     print(response)
     #print(f"{CKBUSDTRATE}")
@@ -3256,8 +3466,9 @@ def run_main_loop():
       os.execv(sys.executable, ['python'] + sys.argv)
     except Exception as e:
       logger.error(f"程序运行中发生错误: {e}")
-      traceback_str = traceback.format_exc()
-      logger.error(f"堆栈跟踪: {traceback_str}")
+      traceback.print_exc()
+    # 记录完整的堆栈跟踪
+      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
       logger.info(f"暂停12,{30}")
       time.sleep(30)
       os.execv(sys.executable, ['python'] + sys.argv)
