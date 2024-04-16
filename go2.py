@@ -2171,6 +2171,8 @@ def calculate_composite_score(current_price, last_order_price,
             elif current_order_direction == 'SELL':
                 trade_method = "亏损卖平" if current_price < ref_price else "盈利卖平"
                 significant_change = False if current_price < ref_price else True
+      else:
+        trade_method = "频繁提交"
 
       if significant_change:
         logger.info(f"相对{ref_price}，以{current_price}{trade_method}")
@@ -2230,24 +2232,33 @@ def calculate_composite_score(current_price, last_order_price,
   calculated_quantity_grid_based_on_rate = math.ceil(quantity_grid_rate * 0.01 * absolute_position_difference)
   calculated_quantity_grid_based_on_u = math.ceil(quantity_grid_u / current_price)
   calculated_quantity_grid_for_min = math.ceil(min_quantity_u / current_price)
-  if quantity_grid_u < 5:
-    quantity_grid_u = 5
-# 检查并更新quantity_grid
+  # 确保 quantity_grid_u 的最小值
+  quantity_grid_u = max(quantity_grid_u, 5)
+
+  # 初始化 quantity_grid 的更新值为 None，仅当需要更新时才更改
+  new_quantity_grid = None
+
+  # 根据比率计算的网格更新条件
   if quantity_grid_rate > 0 and calculated_quantity_grid_based_on_rate > max(quantity_grid, min_quantity):
-    if quantity_grid != calculated_quantity_grid_based_on_rate:
-        quantity_grid = calculated_quantity_grid_based_on_rate
-        print(f"更新单位网格量1：{quantity_grid}")
-        status_manager.update_status('quantity_grid', quantity_grid)
-  elif quantity_grid_u > 5:
-    if quantity_grid != calculated_quantity_grid_based_on_u:
-        quantity_grid = calculated_quantity_grid_based_on_u
-        print(f"更新单位网格量2：{quantity_grid}")
-        status_manager.update_status('quantity_grid', quantity_grid)
-  else:
-    if quantity_grid < calculated_quantity_grid_for_min:  # 仅当quantity_grid小于计算得到的最小值时更新
-        quantity_grid = calculated_quantity_grid_for_min
-        print(f"更新单位网格量3：{quantity_grid}")
-        status_manager.update_status('quantity_grid', quantity_grid)
+      new_quantity_grid = calculated_quantity_grid_based_on_rate
+      update_message = "更新单位网格量1："
+
+  # 根据 u 计算的网格更新条件
+  elif quantity_grid_u > 5 and quantity_grid != calculated_quantity_grid_based_on_u:
+      new_quantity_grid = calculated_quantity_grid_based_on_u
+      update_message = "更新单位网格量2："
+
+  # 检查是否需要更新为最小计算网格
+  elif quantity_grid < calculated_quantity_grid_for_min:
+      new_quantity_grid = calculated_quantity_grid_for_min
+      update_message = "更新单位网格量到最小值："
+
+  # 如果 new_quantity_grid 已经设定，进行更新
+  if new_quantity_grid is not None and new_quantity_grid != quantity_grid:
+      quantity_grid = new_quantity_grid
+      print(update_message + f"{quantity_grid}")
+      status_manager.update_status('quantity_grid', quantity_grid)
+
 
   return ssbb, sbsb  # 返回 ssbb 和 sbsb 的值
 
@@ -2279,7 +2290,7 @@ def calculate_next_order_parameters(price, leverage, order_position):
     # 根据网格数量调整下单量
 
     if order_position == 'lb' :
-      continuous_add_count_lb += 1
+      continuous_add_count_lb += 1.5
       continuous_add_count_ss = 0
       origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
     elif order_position == 'ss':
@@ -2287,7 +2298,7 @@ def calculate_next_order_parameters(price, leverage, order_position):
       continuous_add_count_ss += 1
       origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
     logger.info(f"优化前交易量: {origQty}")
-    origQty = max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity)
+    origQty = adjust_quantity(max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity))
     logger.info(f"Sigmoid优化交易量: {origQty}")
     status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
     status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
@@ -2299,19 +2310,22 @@ def calculate_next_order_parameters(price, leverage, order_position):
 
 
 def adjust_quantity(ad_quantity):
-
-  #调整下单量以满足最小值和步进要求。:param quantity: 原始下单量"""
-
-  # 确保下单量至少为最小值
-
-  if ad_quantity < min_quantity:
-    ad_quantity = 0
-    logger.error(f"quantity小于最小下单量: {ad_quantity}")
-  else:
-    # 调整为符合步进大小的最接近值
+    """调整下单量以满足最小值和步进要求。
+    
+    参数:
+    ad_quantity (float): 原始下单量
+    """
+    # 检查下单量是否至少为最小值
+    if ad_quantity < min_quantity:
+        logger.error(f"quantity小于最小下单量: {ad_quantity}")
+        return 0  # 如果小于最小值，则设置为0
+    
+    # 调整为符合步进大小的最接近的较大值
     ad_quantity = math.ceil(ad_quantity / step_size) * step_size
-    #ad_quantity = round(ad_quantity, dpq)
-  return ad_quantity
+    
+    # 记录调整后的量
+    logger.info(f"调整后的下单量: {ad_quantity}")
+    return ad_quantity
 
 
 def update_order_status(response, position):
@@ -2348,7 +2362,7 @@ def update_order_status(response, position):
           if last_order_direction == 'SELL':
               # 重置空头持仓
               average_short_cost, average_short_position = 0, 0
-              average_long_cost = update_price * (1 + transaction_fee_rate)
+              average_long_cost = round(update_price * (1 + transaction_fee_rate), dpp)
               average_long_position = quantity_response
           else:
               new_total_cost = (average_long_cost * average_long_position + update_price * quantity_response * (1 + transaction_fee_rate))
@@ -2360,7 +2374,7 @@ def update_order_status(response, position):
           if last_order_direction == 'BUY':
               # 重置多头持仓
               average_long_cost, average_long_position = 0, 0
-              average_short_cost = update_price * (1 - transaction_fee_rate)
+              average_short_cost = round(update_price * (1 - transaction_fee_rate), dpp)
               average_short_position = quantity_response
           else:
               new_total_cost = (average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate))
@@ -2506,7 +2520,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   if callback < Slippage * 100:
     callback = min(Slippage * 100, 0.4)
 
-  origQty = quantitya
+  origQty = adjust_quantity(quantitya)
   logger.info(f"下单价格: {price}")
   price_is_special = price in [
     "OPPONENT", "OPPONENT_5", "OPPONENT_10", "OPPONENT_20", "QUEUE", "QUEUE_5",
