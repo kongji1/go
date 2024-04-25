@@ -2124,7 +2124,7 @@ def calculate_composite_score(current_price, last_order_price,
 
 # 网格思路预筛
 
-  score_threshold = 50  #设置阈值
+  score_threshold = 25  #设置阈值
   # 首先检查分数是否达到阈值
   if abs(score) < score_threshold:
     sbsb = 0
@@ -2265,7 +2265,7 @@ def calculate_composite_score(current_price, last_order_price,
 
 # 计算下一个买单的参数,leverage杠杆倍数暂时没有用
 def calculate_next_order_parameters(price, leverage, order_position):
-  global last_order_direction, continuous_add_count_lb, continuous_add_count_ss
+  global last_order_direction
   try:
     #    order_position = 'lb'
     next_price = round(price, dpp)  #
@@ -2275,9 +2275,9 @@ def calculate_next_order_parameters(price, leverage, order_position):
       grid_ratio = max(current_price, reference_price) / min(
         current_price, reference_price)
       grid_count = int(math.log(grid_ratio) / math.log(1 + FP))
-      logger.info(f"优化前网格数量: {grid_count}")
+      logger.info(f"1优化前网格数量: {grid_count}")
       grid_count = (1 / (1 + math.exp(- grid_count / 6)) - 0.5) * 2 * 15
-      logger.info(f"Sigmoid优化网格数量: {grid_count:.1f}\n")
+      logger.info(f"1Sigmoid优化网格数量: {grid_count:.1f}\n")
       #www.desmos.com/calculator?lang=zh-TW 
       #y=\left(1/\left(1+e^{\left(-\frac{x}{6}\right)}\right)-0.5\right)\cdot30
     elif reference_price == 0:
@@ -2290,18 +2290,12 @@ def calculate_next_order_parameters(price, leverage, order_position):
     # 根据网格数量调整下单量
 
     if order_position == 'lb' :
-      continuous_add_count_lb += 1.5
-      continuous_add_count_ss = 0
       origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
     elif order_position == 'ss':
-      continuous_add_count_lb = 0
-      continuous_add_count_ss += 1
       origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
-    logger.info(f"优化前交易量: {origQty}")
+    logger.info(f"2优化前交易量: {origQty}")
     origQty = adjust_quantity(max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity))
-    logger.info(f"Sigmoid优化交易量: {origQty}")
-    status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
-    status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
+    logger.info(f"2Sigmoid.{continuous_add_count_lb}b/{continuous_add_count_ss}.s优化交易量: {origQty}")
     return next_price, origQty
   except Exception as e:
     logger.error(f"执行calculate_next_order_parameters出错: {e}")
@@ -2342,6 +2336,7 @@ def update_order_status(response, position):
     update_position_cost(update_price, quantity_response,
                          response['positionSide'], response['side'])
     def update_position_costs_and_quantities(response_side, last_order_direction, update_price, quantity_response, transaction_fee_rate, dpp, average_long_cost, average_long_position, average_short_cost, average_short_position, logger):
+      
       """
       更新多头和空头的平均成本及持仓量。
 
@@ -2358,7 +2353,9 @@ def update_order_status(response, position):
       - average_short_position: 空头的持仓量
       - logger: 日志记录器
       """
+      logger.info(f"更新前lb/ss计数{continuous_add_count_lb}/{continuous_add_count_ss}")
       if response_side == 'BUY':
+
           if last_order_direction == 'SELL':
               # 重置空头持仓
               average_short_cost, average_short_position = 0, 0
@@ -2371,6 +2368,7 @@ def update_order_status(response, position):
               average_long_position = new_total_quantity
 
       else:  # response_side == 'SELL'
+
           if last_order_direction == 'BUY':
               # 重置多头持仓
               average_long_cost, average_long_position = 0, 0
@@ -2382,12 +2380,15 @@ def update_order_status(response, position):
               average_short_cost = round(new_total_cost / new_total_quantity, dpp) if new_total_quantity > 0 else 0
               average_short_position = new_total_quantity
 
-      logger.info(f"更新后的持仓 - 多头成本: {average_long_cost}, 多头持仓: {average_long_position}, 空头成本: {average_short_cost}, 空头持仓: {average_short_position}")
+      logger.info(f"1更新后的持仓 - 多头成本: {average_long_cost}, 多头持仓: {average_long_position}, 空头成本: {average_short_cost}, 空头持仓: {average_short_position}，lb/ss计数{continuous_add_count_lb}/{continuous_add_count_ss}")
       return average_long_cost, average_long_position, average_short_cost, average_short_position
       
     def update_position(side, update_price, quantity_response, transaction_fee_rate, 
                      average_long_cost, average_long_position, average_short_cost, average_short_position):
+      global continuous_add_count_lb, continuous_add_count_ss
       if side == 'BUY':
+          continuous_add_count_lb += 1.5
+          continuous_add_count_ss = 0.5
           # 增加多头或减少空头
           if average_short_position > 0:
               # 减少空头仓位
@@ -2405,6 +2406,8 @@ def update_order_status(response, position):
           average_long_cost = total_cost / average_long_position if average_long_position > 0 else 0
 
       elif side == 'SELL':
+          continuous_add_count_lb = 1.5
+          continuous_add_count_ss += 0.5
           # 增加空头或减少多头
           if average_long_position > 0:
               # 减少多头仓位
@@ -2420,7 +2423,8 @@ def update_order_status(response, position):
           total_cost = average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate)
           average_short_position += quantity_response
           average_short_cost = total_cost / average_short_position if average_short_position > 0 else 0
-
+      status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
+      status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
       return average_long_cost, average_long_position, average_short_cost, average_short_position
     
     average_long_cost, average_long_position, average_short_cost, average_short_position = update_position(response['side'], update_price, quantity_response, transaction_fee_rate, 
@@ -2501,22 +2505,25 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
   if position not in ['lb', 'ss']:
     logging.error(f"无效的订单意图：{position}")
     return
+  quantitya = quantitya if quantitya is not None else 0.0
   adjusted_quantity = quantitya
   if position == 'lb':
       max_allowed = max_position_size_long - (long_position - short_position)
       if quantitya > max_allowed:
           logging.warning(f"多单风控调整：原始数量{quantitya}，调整后{max_allowed}")
-          adjusted_quantity = max_allowed
+          adjusted_quantity = max_allowed / 6
   elif position == 'ss':
       max_allowed = max_position_size_short - (short_position - long_position)
       if quantitya > max_allowed:
           logging.warning(f"空单风控调整：原始数量{quantitya}，调整后{max_allowed}")
-          adjusted_quantity = max_allowed
+          adjusted_quantity = max_allowed / 6
   # 确保调整后的数量不为负
   quantity = max(0, adjusted_quantity)
   if quantity == 0:
       logging.error(f"{position}风控触发，无法调整下单量至正值。多仓：{long_position}，空仓：{short_position}")
       return 
+  else:
+      logging.error(f"{position}风控未触发，{long_position - short_position}多仓未触及{max_position_size_long}，{short_position - long_position}空单未触及{max_position_size_long}")
   if callback < Slippage * 100:
     callback = min(Slippage * 100, 0.4)
 
