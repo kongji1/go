@@ -1,5 +1,5 @@
 import time  # 用于时间相关操作 3435+duijian+对冲量改相对净持仓
-#优化指标传入周期
+#优化指标传入周期 23.3.2
 import requests  # 用于发送HTTP请求
 import os  # 用于执行操作系统相关任务
 import sys  # 用于访问与 Python 解释器交互的变量和函数
@@ -2323,7 +2323,7 @@ def adjust_quantity(ad_quantity):
 
 
 def update_order_status(response, position):
-  global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, add_rate, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position
+  global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, add_rate, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position, quantity_grid_rate
   if 'price' in response and 'origQty' in response and 'type' in response and 'side' in response:
     update_price = float(response['price'] if response['type'] !=
                          'TRAILING_STOP_MARKET' else response['activatePrice'])
@@ -2461,8 +2461,10 @@ def update_order_status(response, position):
     status_manager.update_status('quantity', quantity)
     FP = float(FP) * float(leverage)
     add_rate = float(add_rate) * float(leverage)
+    quantity_grid_rate = float(quantity_grid_rate) * float(leverage)
     status_manager.update_status('FP', FP)
     status_manager.update_status('add_rate', add_rate)
+    status_manager.update_status('quantity_grid_rate', quantity_grid_rate)
     last_order_direction = response['side']
     status_manager.update_status('last_order_direction', last_order_direction)
     time_str = current_time.strftime("%H:%M:%S")  # 格式化时间字符串
