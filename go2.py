@@ -12,6 +12,7 @@ from keeplive import keeplive  # 导入保持连接模块
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+import ruamel.yaml 
 from ruamel.yaml import YAML
 import subprocess  # 用于执行外部命令
 import math  # 用于数学计算
@@ -29,52 +30,49 @@ keeplive()
 # logging_utils.py
 import logging
 from logging.handlers import TimedRotatingFileHandler
-
+import os
 context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
 context.options |= ssl.PROTOCOL_TLS_CLIENT
 
-
 # 日志过滤器
 class IgnoreHttpGetLogsFilter(logging.Filter):
-
-  def filter(self, record):
-    http_get_condition = 'GET /logs HTTP/1.1' not in record.getMessage()
-    options_request_condition = 'OPTIONS * HTTP/1.1' not in record.getMessage()
-
-    # 返回 True 表示保留日志记录，返回 False 表示过滤掉日志记录
-    return http_get_condition and options_request_condition
-
-
-#return 'GET /logs HTTP/1.1' not in record.getMessage()
-
-
+    def filter(self, record):
+        # 仅保留不包含特定字符串的日志记录
+        return ('GET /logs HTTP/1.1' not in record.getMessage()) and \
+               ('OPTIONS * HTTP/1.1' not in record.getMessage())
+# 设置日志
 def setup_logging():
-  # 初始化日志记录器
-  logger = logging.getLogger()
-  logger.setLevel(logging.DEBUG)
+    # 创建一个logger对象（DEBUG、INFO、WARNING、ERROR、CRITICAL）
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)  # 设置最低日志级别为DEBUG
 
-  log_handler = TimedRotatingFileHandler(os.path.join(BASE_PATH, 'app.log'),
-                                         when='MIDNIGHT',
-                                         interval=1,
-                                         backupCount=10,
-                                         encoding='utf-8')
-  log_handler.setLevel(logging.DEBUG)
-  log_formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(message)s')
-  log_handler.setFormatter(log_formatter)
-  # 添加过滤器到文件处理器
-  log_handler.addFilter(IgnoreHttpGetLogsFilter())
-  # 控制台日志处理器
-  stream_handler = logging.StreamHandler()
-  stream_handler.setLevel(logging.INFO)
-  stream_formatter = logging.Formatter('%(message)s')
-  stream_handler.setFormatter(stream_formatter)
-  stream_handler.addFilter(IgnoreHttpGetLogsFilter())  # 添加过滤器到控制台处理器
+    # 创建文件处理器，按天切割日志
+    log_file_path = os.path.join(BASE_PATH, 'app.log')  # 确保 BASE_PATH 已定义
+    file_handler = TimedRotatingFileHandler(
+        log_file_path,
+        when='MIDNIGHT',
+        interval=1,
+        backupCount=10,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)  # 文件处理器记录所有DEBUG及以上级别的日志
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    # 根据需要添加或移除过滤器
+    file_handler.addFilter(IgnoreHttpGetLogsFilter())
+    # 控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)  # 控制台处理器记录INFO及以上级别的日志
+    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_handler.setFormatter(console_formatter)
+    # 根据需要添加或移除过滤器
+    console_handler.addFilter(IgnoreHttpGetLogsFilter())
 
-  logger.addHandler(log_handler)  # 添加文件处理器到日志
-  logger.addHandler(stream_handler)  # 添加控制台处理器到日志
+    # 将处理器添加到logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
-  return logger
+    return logger
 
 
 # 基础路径
@@ -114,7 +112,7 @@ def load_json_file(file_name, default_value=None):
     logger.error(f"解析 {file_path} 时出现解码错误: {e}")
   except Exception as e:
     logger.error(f"加载 {file_path} 时出现未预期的错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
   return default_value if default_value is not None else {}
 
 
@@ -157,7 +155,7 @@ def update_json_file(file_name, data):
     logger.error(f"更新 {file_path} 时发生未知错误：{e}")
     traceback.print_exc()
   # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     # 处理其他可能的异常
 
   finally:
@@ -177,10 +175,29 @@ def load_config():
     sys.exit(1)
   return config
 
+class CustomUMFutures(UMFutures):
+    def get_timestamp(self):
+        """重写 get_timestamp 方法，获取 Binance 服务器的时间戳"""
+        url = "https://api.binance.com/api/v3/time"
+        response = requests.get(url)
+        server_time = response.json()['serverTime']
+        return server_time
+    def sign_request(self, http_method, url_path, payload=None, special=False):
+        """重写 sign_request 方法，使用 get_timestamp 获取修正后的时间戳"""
+        if payload is None:
+            payload = {}
+        payload["timestamp"] = self.get_timestamp()  # 使用服务器时间戳
+        query_string = self._prepare_params(payload, special)
+        payload["signature"] = self._get_sign(query_string)
+        return self.send_request(http_method, url_path, payload, special)
+    def get_orders(self, **kwargs):
+        url_path = "/fapi/v1/openOrders"
+        params = {**kwargs}  # 将传入的参数合并到 params 中
+        return self.sign_request("GET", url_path, params)
 
 def setup_um_futures_client():
   config = load_config()
-  return UMFutures(key=config['binance_api_key'],
+  return CustomUMFutures(key=config['binance_api_key'],
                    secret=config['binance_api_secret'])
 
 
@@ -194,12 +211,11 @@ def update_status(key, value):
     logger.error(f"更新status.json时出错: {e}")
     traceback.print_exc()
   # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 优化后的status.json读取
 import threading
-
 
 class StatusManager:
 
@@ -212,6 +228,7 @@ class StatusManager:
     self.yaml.preserve_quotes = True  # 保留原始引号
     self.yaml.indent(mapping=2, sequence=4, offset=2)
     self.status = self.load_status()
+    self.lock = threading.Lock()  # 添加锁以确保线程安全
     self.init_save_timer()
 
   @staticmethod
@@ -229,7 +246,7 @@ class StatusManager:
     except Exception as e:
       traceback.print_exc()
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
       if self.logger:
         self.logger.error(f"读取状态文件时出错: {e}")
       return {}
@@ -244,50 +261,61 @@ class StatusManager:
       self.reset_save_timer()
 
   def save_status(self):
-    backup_file_path = self.file_path + ".bak"
-    temp_file_path = self.file_path + ".tmp"
+    with self.lock:  # 确保同一时间只有一个线程执行此块
+      backup_file_path = self.file_path + ".bak"
+      temp_file_path = self.file_path + ".tmp"
 
-    try:
-      # 创建状态文件的备份
-      if os.path.exists(self.file_path):
-        os.replace(self.file_path, backup_file_path)
+      try:
+        # 创建状态文件的备份
+        if os.path.exists(self.file_path):
+          os.replace(self.file_path, backup_file_path)
 
-      # 读取现有状态或初始化空状态
-      all_statuses = {}
-      if os.path.exists(backup_file_path):
-        with open(backup_file_path, 'r', encoding='utf-8') as backup_file:
-          all_statuses = self.yaml.load(backup_file) or {}
+        # 读取现有状态或初始化空状态
+        all_statuses = {}
+        if os.path.exists(backup_file_path):
+          with open(backup_file_path, 'r', encoding='utf-8') as backup_file:
+            all_statuses = self.yaml.load(backup_file) or {}
 
-      # 更新当前交易对的状态
-      all_statuses[self.trading_pair] = self.status
+        # 更新当前交易对的状态
+        all_statuses[self.trading_pair] = self.status
 
-      # 先将更新写入临时文件
-      with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
-        self.yaml.dump(all_statuses, temp_file)
+        # 创建一个新的 YAML 实例以避免潜在的线程问题
+        yaml_instance = ruamel.yaml.YAML()
+        yaml_instance.preserve_quotes = True
+        yaml_instance.indent(mapping=2, sequence=4, offset=2)
 
-      # 重命名临时文件为正式文件，确保写入的原子性
-      os.replace(temp_file_path, self.file_path)
-      if self.logger:
-        self.logger.info("状态已保存到文件: " + self.trading_pair)
+        # 先将更新写入临时文件
+        with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
+          yaml_instance.dump(all_statuses, temp_file)
 
-      # 状态保存成功后，删除备份文件
-      if os.path.exists(backup_file_path):
-        os.remove(backup_file_path)
-
-    except Exception as e:
-      traceback.print_exc()
-      # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
-      if self.logger:
-        self.logger.error(f"保存状态到文件时出错: {e}")
-      # 如果出现错误，尝试从备份恢复
-      if os.path.exists(backup_file_path):
-        os.replace(backup_file_path, self.file_path)
+        # 重命名临时文件为正式文件，确保写入的原子性
+        os.replace(temp_file_path, self.file_path)
         if self.logger:
-          self.logger.info("已从备份中恢复到上一个状态文件版本")
+          self.logger.info("状态已保存到文件: " + self.trading_pair)
 
-    finally:
-      self.init_save_timer()
+        # 状态保存成功后，删除备份文件
+        if os.path.exists(backup_file_path):
+          os.remove(backup_file_path)
+
+      except Exception as e:
+          traceback.print_exc()
+          # 记录完整的堆栈跟踪
+          if self.logger:
+              self.logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+              self.logger.error(f"保存状态到文件时出错: {e}")
+                # 如果出现错误，尝试从备份恢复
+          if os.path.exists(backup_file_path):
+              try:
+                  os.replace(backup_file_path, self.file_path)
+                  if self.logger:
+                    self.logger.info("已从备份中恢复到上一个状态文件版本")
+              except Exception as recover_e:
+                  self.logger.error(f"恢复备份时出错: {recover_e}")
+                  self.logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+
+      finally:
+          self.init_save_timer()
+
 
   def init_save_timer(self):
     self.save_timer = threading.Timer(self.save_interval, self.save_status)
@@ -366,7 +394,7 @@ def update_order_records(order_data):
 def fetch_and_update_active_orders(symbol):
   global long_position, short_position, long_cost, short_cost, transaction_fee_rate
   try:
-    active_orders = client.get_orders(symbol=symbol)
+    active_orders = client.get_orders(symbol=symbol, recvWindow=5000)
     updated_records = []
     for order in active_orders:
       updated_record = {
@@ -404,7 +432,7 @@ def fetch_and_update_active_orders(symbol):
     logger.error(f"{error.args[0], error.args[1], error.args[2]}")
   except Exception as e:
     logger.error(f"处理活跃订单时出现未预期的错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 检查并更新订单的成交状态
@@ -431,7 +459,7 @@ def check_and_update_order_status(symbol):
                      )
         traceback.print_exc()
         # 记录完整的堆栈跟踪
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
   if updated:
     update_json_file('order_records.json', cached_orders)
@@ -456,14 +484,14 @@ async def visit_url(url):
       logger.error(f"访问 {url} 时发生错误: {e}")
       traceback.print_exc()
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 # 使用此函数时请谨慎，并确保您理解相关的安全风险
 is_paused = False
 # 交易和市场相关参数
-symbol = 'CKBUSDT'  #@@ 交易对符号 BTCUSDT ETHUSDT LSKUSDT
-symbolp = "CKBUSDT_PERP"  # 特定交易产品的标识符
+symbol = 'DOGEUSDT'  #@@ 交易对符号 BTCUSDT ETHUSDT LSKUSDT
+symbolp = "DOGEUSDT_PERP"  # 特定交易产品的标识符
 side = 'BUY'  # 交易方向，'BUY' 表示买入操作
 order_type = 'LIMIT'  # 订单类型，'LIMIT' 表示限价订单
 time_in_force = 'GTC'  # 订单时效，'GTC' 表示订单有效直到取消（Good Till Canceled）
@@ -510,7 +538,7 @@ rsi = None  # 相对强弱指数（RSI），用于技术分析
 mfi = None  # 资金流量指标（MFI），用于分析买卖压力
 ema5 = None  # 5周期指数移动平均线（EMA5），用于趋势分析
 kline_data_cache = {}  # 存储不同时间间隔K线数据的字典
-initial_balance = 0  # 交易账户的初始余额
+initial_balance = 100  # 交易账户的初始余额
 long_profit, short_profit = 0, 0  # 分别记录多头和空头头寸的利润
 cached_orders = []  # 全局变量来存储订单数据
 last_known_price = None  # 用于存储最后一次成功获取的价格
@@ -667,7 +695,7 @@ def price_to_datetime(update_time_str):
     return update_time
   except Exception as e:
     logger.error(f"Error parsing {update_time}: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     update_time = None
     return update_time
 
@@ -676,27 +704,54 @@ ssbb = temp_ssbb
 
 
 # 获取公网IP和延迟函数
-def get_public_ip_and_latency():
-  try:
-    response = requests.get('http://ip-api.com/json/', timeout=5)
-    data = response.json()
-    if data['status'] == 'success':
-      public_ip = f"{data.get('query', 'Unknown')}, {data.get('country', 'Unknown')}, {data.get('city', 'Unknown')}, {data.get('isp', 'Unknown')}"
+from datetime import datetime
 
-    start_time = time.time()
-    requests.get('https://api.binance.com/api/v1/ping', timeout=5)
-    latency = round((time.time() - start_time) * 1000, 1)
-    logger.info(f"Public IP: {public_ip}, Latency: {latency} ms")
-    return public_ip, latency
-  except requests.RequestException as e:
-    logger.error(f"网络请求错误: {e}")
-    return 'Unknown', None
+# 获取公网IP和延迟函数
+def get_public_ip_and_latency():
+    try:
+        # 获取公网IP信息
+        response = requests.get('http://ip-api.com/json/', timeout=5)
+        data = response.json()
+        if data.get('status') == 'success':
+            public_ip = f"{data.get('query', 'Unknown')}, {data.get('country', 'Unknown')}, {data.get('city', 'Unknown')}, {data.get('isp', 'Unknown')}"
+        else:
+            public_ip = 'Unknown'
+
+        # 测试与 Binance 的延迟
+        start_time = time.time()
+        requests.get('https://api.binance.com/api/v3/ping', timeout=5)
+        latency = round((time.time() - start_time) * 1000, 1)
+        logger.info(f"Public IP: {public_ip}, Latency: {latency} ms")
+        
+        # 获取当前的 IP 历史记录
+        ip_history = status_manager.get_status('ip_history', [])
+        
+        # 检查是否需要追加新的 IP
+        if not ip_history or ip_history[-1]['ip'] != public_ip:
+            ip_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'ip': public_ip
+            }
+            ip_history.append(ip_entry)
+            status_manager.update_status('ip_history', ip_history)
+            logger.info(f"已追加新的 IP 到历史记录: {public_ip}")
+        else:
+            logger.info("IP 未变化，不进行更新。")
+        
+        return public_ip, latency
+    except requests.RequestException as e:
+        logger.error(f"网络请求错误: {e}")
+        return 'Unknown', None
+    except Exception as e:
+        logger.error(f"保存 IP 时发生错误: {e}")
+        traceback.print_exc()
+        return 'Unknown', None
 
 
 # 获取服务器时间函数
 def get_binance_server_time():
   try:
-    response = requests.get("https://api.binance.com/api/v1/time",
+    response = requests.get("https://api.binance.com/api/v3/time",
                             timeout=10).json()
     return response.get('serverTime', None)
   except requests.RequestException as e:
@@ -720,7 +775,7 @@ def get_current_time():
     logger.info(f"当前时间：{time_str8}")
     return current_time, time_str8  # 返回datetime对象和时间字符串
   except Exception as e:
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     print(f"获取时间时出错: {e}")
     return datetime.now(), "Error"  # 发生错误时返回当前时间的datetime对象
 
@@ -752,10 +807,11 @@ def get_current_price(symbol, max_retries=1, now=0):
           # 如果是主要URL，使用Binance价格
           last_known_price = float(response.json()['price'])
           logger.info(f"get_current_price更新价格{last_known_price}")
+          #临时调整心跳
           last_price_update_time = current_time
-          last_price_update_time_str = last_price_update_time.isoformat()
-          status_manager.update_status('last_price_update_time',
-                                       last_price_update_time_str)
+          #last_price_update_time_str = last_price_update_time.isoformat()
+          #status_manager.update_status('last_price_update_time',
+          #                             last_price_update_time_str)
         else:
           # 如果是备用URL，使用Huobi价格
           data = response.json()
@@ -763,10 +819,11 @@ def get_current_price(symbol, max_retries=1, now=0):
               data['ticks']) > 0:
             last_known_price = data['ticks'][0]['ask'][0]
             logger.info(f"get_current_price更新价格{last_known_price}")
-            last_price_update_time = current_time
-            last_price_update_time_str = last_price_update_time.isoformat()
-            status_manager.update_status('last_price_update_time',
-                                         last_price_update_time_str)
+          #临时调整心跳
+          last_price_update_time = current_time
+          #last_price_update_time_str = last_price_update_time.isoformat()
+          #status_manager.update_status('last_price_update_time',
+          #                             last_price_update_time_str)
 
       return last_known_price, last_price_update_time
     except requests.exceptions.HTTPError as e:
@@ -779,7 +836,7 @@ def get_current_price(symbol, max_retries=1, now=0):
       logger.error(f"获取当前价格时出错: {e}")
       traceback.print_exc()
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
     if current_url == primary_url:
       logger.info(f"切换到备用URL，暂停1,{timeout}s")
@@ -905,7 +962,7 @@ def current_status():
     logger.error(f"获取当前状态时出错: {e}")
     traceback.print_exc()
   # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 def calculate_limit_for_interval(interval, days):
@@ -1023,11 +1080,12 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
               logger.info(f"k{interval}/{new_limit}更新价格{last_known_price}")
               current_time = datetime.now()
               last_price_update_time_dict[interval] = current_time  # 更新特定间隔的时间
-              last_price_update_time = current_time
-              last_price_update_time_string = last_price_update_time.isoformat(
-              )
-              status_manager.update_status('last_price_update_time',
-                                           last_price_update_time_string)
+              #临时调整心跳
+              #last_price_update_time = current_time
+              #last_price_update_time_string = last_price_update_time.isoformat(
+              #)
+              #status_manager.update_status('last_price_update_time',
+              #                             last_price_update_time_string)
 
               if interval in kline_data_cache:
                 existing_data = kline_data_cache[interval]
@@ -1046,7 +1104,7 @@ async def get_kline_data_async(symbol, interval, limit, first_fetch=True):
     return kline_data_cache[interval]
   except Exception as e:
     logger.error(f"get_kline_data_async出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return kline_data_cache.get(interval, None)
 
 
@@ -1117,10 +1175,10 @@ async def update_kline_data_async(symbol, current_time):
           if intervals_to_update:
               await cache_kline_data(symbol, intervals_to_update, limit)  # 一次性处理所有需要更新的间隔
               for interval in intervals_to_update:
-                  logger.info(f"已更新: {interval} {len(kline_data_cache[interval])}\n")
+                  logger.debug(f"已更新: {interval} {len(kline_data_cache[interval])}\n")
     except Exception as e:
         logger.error(f"异步更新K线数据时出错: {e}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 import sqlite3
 
@@ -1209,7 +1267,7 @@ def c_so(interval, k_window=14, d_window=3):
     return percent_k, percent_d
   except Exception as e:
     logger.error(f"Stochastic Oscillator计算出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None
 
 
@@ -1246,7 +1304,7 @@ async def backtest_so(interval,
     return overbought, oversold, total_return
   except Exception as e:
     logger.error(f"Backtest SO出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 async def sobest(interval):
@@ -1296,7 +1354,7 @@ async def sobest(interval):
     return best_overbought, best_oversold, best_return
   except Exception as e:
     logger.error(f"sobest出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return 23, 84, None
     
 
@@ -1323,7 +1381,7 @@ def c_rsi(interval, length):
     return rsi
   except Exception as e:
     logger.error(f"RSI计算出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1376,7 +1434,7 @@ async def backtest_rsi(interval,
     return best_oversold_threshold, best_overbought_threshold, best_return
   except Exception as e:
     logger.error(f"RSI计算出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
@@ -1444,7 +1502,7 @@ async def rsibest(interval):
 
   except Exception as e:
     logger.error(f"rsibest 函数运行时出现错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     # 可以选择返回默认值或者特定的错误指示
     return 40, 70, None
 
@@ -1470,7 +1528,7 @@ def c_mfi(interval, length):
   except Exception as e:
     # 在这里处理可能引发的异常
     logger.error(f"MFI计算出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1522,7 +1580,7 @@ async def backtest_mfi(interval,
     return best_mfi_low, best_mfi_high, best_return
   except Exception as e:
     logger.error(f"backtest_mfi出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
@@ -1605,7 +1663,7 @@ async def mfibest(interval):
 
   except Exception as e:
     logger.error(f"mfibest出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return 38, 77, None
 
 
@@ -1620,7 +1678,7 @@ def c_ema(interval, length):
     return close_prices.ewm(span=length, adjust=False).mean()
   except Exception as e:
     logger.error(f"EMA计算出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series()
 
 
@@ -1643,7 +1701,7 @@ def c_macd(interval, fastperiod, slowperiod, signalperiod):
     return macd, signal
   except Exception as e:
     logger.error(f"在c_macd中发生异常：{e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series(), pd.Series()
 
 
@@ -1795,7 +1853,7 @@ def c_support_resistance(interval):
     logger.error(f"在c_support_resistance中发生异常：{e}")
     traceback.print_exc()
       # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None, None
 
 
@@ -1819,7 +1877,7 @@ def c_atr(interval, period=14):
     return atr.iloc[-1]
   except Exception as e:
     logger.error(f"在c_atr中发生异常：{e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
 
@@ -1874,7 +1932,7 @@ def c_ssbb(interval):
       return pd.Series(), pd.Series()
   except Exception as e:
     logger.error(f"计算v_ssbb时出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return pd.Series(), pd.Series()
 
 
@@ -2020,6 +2078,8 @@ def calculate_score(conditions_enabled):
   ]
   # 遍历所有条件，并根据启用状态计算得分
   logger.info("\n****** 评分系统 ******")  # 在开始之前添加一个换行符
+  last_price_update_time_string = last_price_update_time.isoformat()
+  status_manager.update_status('last_price_update_time',last_price_update_time_string)
   for is_enabled, condition, score_value, log_message in conditions:
     if is_enabled and condition:
       score += score_value
@@ -2210,7 +2270,7 @@ def calculate_composite_score(current_price, last_order_price,
 
     logger.info(f"决策：{action}")
     logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
-    logger.info(f"价格变化比：{price_change_ratio:.2%}触发比{FP:.2f}")
+    logger.info(f"价格变化比：{price_change_ratio:.2%}触发比{FP:.2%}")
     logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
 
   # 确定是否更新 ssbb
@@ -2299,7 +2359,7 @@ def calculate_next_order_parameters(price, leverage, order_position):
     return next_price, origQty
   except Exception as e:
     logger.error(f"执行calculate_next_order_parameters出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None, None  # 确保在出错的情况下返回两个值
 
 
@@ -2520,10 +2580,11 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
           logging.warning(f"空单风控调整：原始数量{quantitya}，调整后{max_allowed}")
           adjusted_quantity = max_allowed / 6
   # 确保调整后的数量不为负
-  quantity = max(0, adjusted_quantity)
-  if quantity == 0:
-      logging.error(f"{position}风控触发，无法调整下单量至正值。多仓：{long_position}，空仓：{short_position}")
-      return 
+  quantity = max(min_quantity, adjusted_quantity)
+  if quantity == min_quantity:
+      logging.error(f"{position}风控触发，调整下单量至min_quantity。多仓：{long_position}，空仓：{short_position}")
+      quantitya = quantity
+    #  return  调整下单量至min_quantity
   else:
       logging.error(f"{position}风控未触发，{long_position - short_position}多仓未触及{max_position_size_long}，{short_position - long_position}空单未触及{max_position_size_long}")
   if callback < Slippage * 100:
@@ -2684,7 +2745,22 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
     return response
   except ClientError as error:
     logger.info(f"w1: {error.args[1]}")
-    if error.args[1] == -4045:
+    if error.args[1] == -2022:
+        logger.error("ReduceOnly Order is rejected. 尝试重新获取并更新当前持仓。")
+        try:
+            fetch_and_update_active_orders(symbol)
+            logger.info("更新当前持仓。")
+            # 根据更新后的持仓情况，决定是否重新尝试下单或执行其他逻辑
+            # 例如，可以重新计算 `quantity` 并尝试再次下单
+            # 以下是一个简单的重新尝试下单的示例（需根据实际情况调整）
+          #  response = place_limit_order(symbol, position, price, quantitya, callback)
+          #  return response
+        except Exception as update_error:
+            logger.error(f"更新持仓时发生错误: {update_error}")
+            logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+            logger.info("暂停12秒后继续执行。")
+            time.sleep(12)
+    elif error.args[1] == -4045:
       # 当达到最大止损订单限制时，转为市价建仓方式下单
       order_params = create_standard_order_params(order_side, position_side,
                                                   price, origQty)
@@ -2694,7 +2770,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
         return order_params
       except Exception as e:
         logger.error(f"市价建仓下单时发生错误: {e}")
-        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
         time.sleep(monitoring_interval)  # 发生错误时等待一分钟
     else:
       logger.error(
@@ -2706,7 +2782,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
 
   except Exception as e:
     logger.error(f"Unexpected error: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     logger.info(f"暂停5,12s")
     time.sleep(12)
 
@@ -2725,7 +2801,7 @@ def query_order(order_id):
     )
   except Exception as e:
     logger.error(f"查询订单时发生未预期的错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 def handle_client_error(error, current_price, order_params):
@@ -2828,7 +2904,7 @@ def dynamic_tracking(symbol,
     return start_price_reached, trade_executed, optimal_price, trade_quantity
   except Exception as e:
     logger.error(f"执行动态追踪时发生错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return False, True, optimal_price, trade_quantity
 
 
@@ -2899,7 +2975,7 @@ def breakeven_stop_profit(symbol,
     return start_price_reached, trade_executed, trade_quantity
   except Exception as e:
     logger.error(f"执行保本止盈时发生错误: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return False, True, trade_quantity
 
 
@@ -3227,7 +3303,7 @@ def trading_strategy():
     logger.error(f"执行trading_strategy时发生错误: {e}")
     traceback.print_exc()
 # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 #调用本地函数
@@ -3261,7 +3337,7 @@ def execute_config_file(config_file_path):
     logger.error(f"读取{config_file}时发生错误: {e}")
     traceback.print_exc()
 # 记录完整的堆栈跟踪
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def fetch_and_update_config():
@@ -3316,7 +3392,7 @@ async def fetch_and_update_config():
       logger.error("未能找到更新时间标签。")
   except Exception as e:
     logger.error(f"更新或执行加载配置时出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def schedule_config_updates():
@@ -3335,7 +3411,7 @@ def get_max_limit():
     return max_limit
   except Exception as e:
     logger.info(f"get_max_limit出错: {e}")
-    logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 
 async def run_periodic_tasks():
@@ -3371,7 +3447,7 @@ async def run_periodic_tasks():
       logger.error(f"在运行周期性任务时出现错误: {e}")
       traceback.print_exc()
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     finally:
       logger.info(f"暂停8,{60}")
       await asyncio.sleep(60)
@@ -3391,8 +3467,9 @@ async def main_loop():
   start_price, last_price_update_time = get_current_price(symbol)
   logger.info(f"开始价格: {start_price}")
 
-  intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
+  intervals = ['3m', '5m']
 
+ # intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
   await cache_kline_data(symbol, intervals, limit_test)
   fetch_and_update_active_orders(symbol)  # 加载订单记录
   current_price = start_price
@@ -3436,12 +3513,12 @@ async def main_loop():
     except ClientError as error:
       logger.error(f"主循环运行时错误: {error}")
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     except Exception as e:
       logger.error(f"主循环运行时1错误: {e}")
       traceback.print_exc()
       # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
       logger.info(f"暂停10,{monitoring_interval}")
       await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
 
@@ -3490,7 +3567,7 @@ def run_main_loop():
       logger.error(f"程序运行中发生错误: {e}")
       traceback.print_exc()
     # 记录完整的堆栈跟踪
-      logger.error(f"堆栈跟踪: {traceback.format_exc()}")
+      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
       logger.info(f"暂停12,{30}")
       time.sleep(30)
       os.execv(sys.executable, ['python'] + sys.argv)
