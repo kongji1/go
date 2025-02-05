@@ -1,5 +1,5 @@
 import time  # 用于时间相关操作 3435+duijian+对冲量改相对净持仓
-#优化指标传入周期 23.3.2
+#quantity_grid_rate 待优化
 import requests  # 用于发送HTTP请求
 import os  # 用于执行操作系统相关任务
 import sys  # 用于访问与 Python 解释器交互的变量和函数
@@ -583,7 +583,8 @@ temp_ssbb = status_manager.get_status('ssbb', 0)
 FP = status_manager.get_status('FP', 0.01)
 quantity_grid = status_manager.get_status('quantity_grid', min_quantity)  #网格单位交易量
 quantity_grid_u = status_manager.get_status('quantity_grid_u', 5)  #网格单位交易量
-quantity_grid_rate = status_manager.get_status('quantity_grid_rate', 1)  #买卖原始基础上浮动比
+quantity_grid_rate = status_manager.get_status('quantity_grid_rate', 1)  #网格单位交易量
+grid_adjustment_factor = status_manager.get_status('grid_adjustment_factor', 2)  #买卖原始基础上浮动比
 quantity = status_manager.get_status('quantity', min_quantity)  #网格最近交易量
 quantity_u = status_manager.get_status('quantity_u', 5)  #网格最近交易量
 last_order_direction = status_manager.get_status('last_order_direction', 'BUY')
@@ -727,7 +728,7 @@ def get_public_ip_and_latency():
         ip_history = status_manager.get_status('ip_history', [])
         
         # 检查是否需要追加新的 IP
-        if not ip_history or ip_history[-1]['ip'] != public_ip:
+        if not any(entry.get('ip') == public_ip for entry in ip_history):
             ip_entry = {
                 'timestamp': datetime.now().isoformat(),
                 'ip': public_ip
@@ -736,7 +737,7 @@ def get_public_ip_and_latency():
             status_manager.update_status('ip_history', ip_history)
             logger.info(f"已追加新的 IP 到历史记录: {public_ip}")
         else:
-            logger.info("IP 未变化，不进行更新。")
+            logger.info("IP 1未变化，不进行更新。")
         
         return public_ip, latency
     except requests.RequestException as e:
@@ -851,45 +852,80 @@ def get_current_price(symbol, max_retries=1, now=0):
 
 
 # 更新持仓成本
-def update_position_cost(price, quantity_upc, position_side, operation_type):
-  global long_position, short_position, long_cost, short_cost, floating_margin, initial_balance
+def update_position_cost(price, quantity, position_side, operation_type):
+    """
+    更新持仓成本及仓位数量
 
-  price = float(price)
-  quantity_upc = float(quantity_upc)
+    参数:
+      price: 成交价格
+      quantity: 成交数量
+      position_side: 持仓方向，取值 "LONG" 或 "SHORT"
+      operation_type: 操作类型，取值 "BUY" 或 "SELL"
+      
+    功能:
+      – 对于多头（LONG）：BUY操作采用加权平均计算新成本，SELL操作减少仓位（若全部卖出则归零）
+      – 对于空头（SHORT）：SELL操作采用加权平均计算新成本，BUY操作减少仓位（若全部买回则归零）
+      – 更新全局变量 floating_margin（浮动保证金）
+    """
+    global long_position, long_cost, short_position, short_cost, floating_margin, initial_balance, current_price
 
-  # 优化：仅当操作为买入/卖出时更新成本
-  if position_side == "LONG" and operation_type in ['BUY', 'SELL']:
-    if operation_type == 'BUY':
-      total_cost = long_cost * long_position + price * quantity_upc
-      long_position += quantity_upc
-    else:  # 'SELL'
-      total_cost = max(0, long_cost * long_position -
-                       price * quantity_upc)  # 防止负值
-      long_position = max(0, long_position - quantity_upc)  # 防止负值
+    try:
+        # 转换参数类型并统一大写比较
+        price = float(price)
+        quantity = float(quantity)
+        op_type = operation_type.upper()
+        pos_side = position_side.upper()
 
-    long_cost = total_cost / long_position if long_position > 0 else 0
+        if pos_side == "LONG":
+            if op_type == "BUY":
+                # 多头加仓：更新加权平均成本
+                total_cost = long_cost * long_position + price * quantity
+                long_position += quantity
+                long_cost = total_cost / long_position if long_position > 0 else 0
+            elif op_type == "SELL":
+                # 多头平仓：若卖出数量大于或等于当前仓位，则清零；否则仅减少仓位数量（成本保持不变）
+                if quantity >= long_position:
+                    long_position = 0
+                    long_cost = 0
+                else:
+                    long_position -= quantity
+            else:
+                logger.error(f"无效的操作类型 {operation_type} (LONG)")
+        elif pos_side == "SHORT":
+            if op_type == "SELL":
+                # 空头加仓：更新加权平均成本
+                total_cost = short_cost * short_position + price * quantity
+                short_position += quantity
+                short_cost = total_cost / short_position if short_position > 0 else 0
+            elif op_type == "BUY":
+                # 空头平仓：若买回数量大于或等于当前仓位，则清零；否则仅减少仓位数量（成本保持不变）
+                if quantity >= short_position:
+                    short_position = 0
+                    short_cost = 0
+                else:
+                    short_position -= quantity
+            else:
+                logger.error(f"无效的操作类型 {operation_type} (SHORT)")
+        else:
+            logger.error(f"无效的持仓方向: {position_side}")
 
-  elif position_side == "SHORT" and operation_type in ['SELL', 'BUY']:
-    if operation_type == 'SELL':
-      total_cost = short_cost * short_position + price * quantity_upc
-      short_position += quantity_upc
-    else:  # 'BUY'
-      total_cost = max(0, short_cost * short_position -
-                       price * quantity_upc)  # 防止负值
-      short_position = max(0, short_position - quantity_upc)  # 防止负值
+        # 根据最新市场价格更新浮动保证金
+        floating_margin = initial_balance + (current_price - long_cost) * long_position + (short_cost - current_price) * short_position
 
-    short_cost = total_cost / short_position if short_position > 0 else 0
+        logger.info(f"更新后多头: 数量={long_position}, 成本={long_cost}; "
+                    f"空头: 数量={short_position}, 成本={short_cost}; "
+                    f"浮动保证金={floating_margin}")
 
-  status_manager.update_status('long_position', round(long_position, dpq))
-  status_manager.update_status('short_position', round(short_position, dpq))
-  status_manager.update_status('long_cost', round(long_cost, dpp))
-  status_manager.update_status('short_cost', round(short_cost, dpp))
+        # 将最新的持仓、成本及浮动保证金保存到状态管理器中
+        status_manager.update_status('long_position', round(long_position, dpq))
+        status_manager.update_status('short_position', round(short_position, dpq))
+        status_manager.update_status('long_cost', round(long_cost, dpp))
+        status_manager.update_status('short_cost', round(short_cost, dpp))
+        status_manager.update_status('floating_margin', round(floating_margin, dpp))
 
-  # 更新浮动利润和余额
-  floating_margin = initial_balance + (price - long_cost) * long_position + (
-    short_cost - price) * short_position
-  status_manager.update_status('floating_margin', round(floating_margin, dpp))
-
+    except Exception as e:
+        logger.error(f"更新持仓成本时出错: {e}")
+        logger.debug(traceback.format_exc())
 
 # 获取当前仓位状态
 def current_status():
@@ -1880,6 +1916,9 @@ def c_atr(interval, period=14):
     logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
     return None
 
+# =============================================================================
+# RMI Trend Sniper 及 ssbb/sbsb 相关逻辑
+# =============================================================================
 
 v_ssbb_count = 0  # 初始化两个计数器
 v_sbsb_count = 0
@@ -2088,470 +2127,668 @@ def calculate_score(conditions_enabled):
   score_cache['last_calc_period'] = current_period
   return score
 
+# =============================================================================
+# 网格系统与下单参数计算
+# =============================================================================
 
 stop_loss_limit = 0.02  # 停损价格阈值
 take_profit_limit = 0.02  # 止盈价格阈值
 
+def calculate_composite_score(current_price, last_order_price, last_s_order_price, stop_loss_limit, take_profit_limit):
+    """
+    根据最新价格及当前仓位、技术指标计算综合评分，并据此决定网格系统参数更新
+    """
+    global temp_ssbb, quantity_grid, quantity_grid_u, min_quantity, quantity_grid_rate
+    global long_position, short_position
+    data = kline_data_cache[interval_5m]
+    if not data:
+        logger.error("无K线数据")
+        return temp_ssbb, 0
+    if current_price is not None:
+        data[-1][4] = current_price
 
-# 网格系统
-def calculate_composite_score(current_price, last_order_price,
-                              last_s_order_price, stop_loss_limit,
-                              take_profit_limit):
-  global temp_ssbb
-  data = kline_data_cache[interval_5m]
-  if not data:
-    logger.error("无K线数据")
-    return temp_ssbb, 0  # 返回当前的 ssbb 和 sbsb=0
-  if current_price is not None:
-    data[-1][4] = current_price
-  # 计算技术指标
-  rsi = c_rsi(interval_5m, 14)
-  mfi = c_mfi(interval_5m, 14)
-  ema5 = c_ema(interval_5m, 5)
-  macd, signal = c_macd(interval_ssbb_3m, fastperiod, slowperiod, signalperiod)
-  percent_k, percent_d = c_so(interval_5m, 14, 3)
-  v_ssbb, v_sbsb = c_ssbb(interval_ssbb_3m)
-  ssbb, sbsb = int(v_ssbb.iloc[-1]), int(v_sbsb.iloc[-1])
-  logger.info(f"******** 网格系统 ********")
+    rsi = c_rsi(interval_5m, 14)
+    mfi = c_mfi(interval_5m, 14)
+    ema5 = c_ema(interval_5m, 5)
+    macd, signal = c_macd(interval_ssbb_3m, fastperiod, slowperiod, signalperiod)
+    percent_k, percent_d = c_so(interval_5m, 14, 3)
+    v_ssbb, v_sbsb = c_ssbb(interval_ssbb_3m)
+    ssbb, sbsb = int(v_ssbb.iloc[-1]), int(v_sbsb.iloc[-1])
+    logger.info("******** 网格系统 ********")
 
-  conditions_enabled = {
-    'ssbb_logic': ssbb_logic_enabled,
-    'price_change': price_change_enabled,
-    'cost_price_logic': cost_price_logic_enabled,
-    'technical_indicators': technical_indicators_enabled,
-    'macd_signal': macd_signal_enabled
-  }
-  score = calculate_score(conditions_enabled)
+    conditions_enabled = {
+        'ssbb_logic': ssbb_logic_enabled,
+        'price_change': price_change_enabled,
+        'cost_price_logic': cost_price_logic_enabled,
+        'technical_indicators': technical_indicators_enabled,
+        'macd_signal': macd_signal_enabled
+    }
+    score = calculate_score(conditions_enabled)
 
-  def calculate_liquidation_price(initial_margin_l,
-                                  start_price_l,
-                                  amplitude_percent_l,
-                                  add_amount_l,
-                                  leverage_l,
-                                  trade_direction_l='BUY'):
-    #initial_margin: 初始保证金 start_price: 起始价格 amplitude: 波动幅度（百分比）add_amount: 每次增加的头寸数量 leverage: 马丁系数 trade_direction: 交易方向，'BUY' 表示买入（多头），'SELL' 表示卖出（空头）。默认为 'BUY'。
-    global max_position_size_long, max_position_size_short
-    current_price_l = start_price_l
-    total_quantity_l = long_position - short_position if trade_direction_l == 'BUY' else short_position - long_position
-    total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY'
-                                       else short_cost)
-    max_iterations = 100  # 设置最大迭代次数作为安全退出的条件
-    iteration_count = 0  # 初始化迭代计数器
-    while iteration_count < max_iterations:
-      iteration_count += 1  # 每次循环迭代计数器加1
-      if add_amount_l == 0:
-        print(f"添加量{add_amount_l}必须不为0")
-        logger.info(f"添加量{add_amount_l}必须不为0")
-        break  # 退出循环
-      # 增加头寸
-      total_quantity_l += add_amount_l
-      if total_quantity_l == 0:
-        total_quantity_l += add_amount_l
-      total_cost_l += add_amount_l * current_price_l
-      # 计算平均成本
-      #logger.info(f"总成本:{total_cost_l}, 总量:{total_quantity_l}")
-      average_cost_l = total_cost_l / total_quantity_l
-      # 根据交易方向计算亏损
-      if trade_direction_l == 'BUY':
-        loss_l = (average_cost_l - current_price_l) * total_quantity_l
-      elif trade_direction_l == 'SELL':
-        loss_l = (current_price_l - average_cost_l) * total_quantity_l
-      else:
-        raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
-      # 检查亏损是否超过初始保证金
-      if loss_l > initial_margin_l:
-        if max_position_size_long != round((total_quantity_l * LongRisk), dpq) and trade_direction_l == 'BUY':
-          logger.info(f"原多单风控:{max_position_size_long}")
-          max_position_size_long = round((total_quantity_l * LongRisk), dpq)
-          status_manager.update_status('max_position_size_long', max_position_size_long)
-          logger.info(f"多单风控仓位{max_position_size_long}")
-        elif max_position_size_short != round((total_quantity_l * ShortRisk), dpq) and trade_direction_l == 'SELL':
-          logger.info(f"原空单风控:{max_position_size_short}")
-          max_position_size_short = round((total_quantity_l * ShortRisk), dpq)
-          status_manager.update_status('max_position_size_short', max_position_size_short)
-          logger.info(f"空单风控仓位{max_position_size_short}")
-        logger.info(f"{loss_l:.{dpq}f} > {initial_margin_l:.{dpq}f}")
-        logger.info(f"头寸:{total_quantity_l:.{dpq}f},风控:{max_position_size_long if trade_direction_l == 'BUY' else max_position_size_short},持仓:{long_position if trade_direction_l == 'BUY' else short_position}")
+    def calculate_liquidation_price(initial_margin_l, start_price_l, amplitude_percent_l, add_amount_l, leverage_l, trade_direction_l='BUY'):
+        global max_position_size_long, max_position_size_short
+        current_price_l = start_price_l
+        total_quantity_l = long_position - short_position if trade_direction_l == 'BUY' else short_position - long_position
+        total_cost_l = total_quantity_l * (long_cost if trade_direction_l == 'BUY' else short_cost)
+        max_iterations = 100
+        iteration_count = 0
+        while iteration_count < max_iterations:
+            iteration_count += 1
+            if add_amount_l == 0:
+                logger.info(f"添加量{add_amount_l}必须不为0")
+                break
+            total_quantity_l += add_amount_l
+            if total_quantity_l == 0:
+                total_quantity_l += add_amount_l
+            total_cost_l += add_amount_l * current_price_l
+            average_cost_l = total_cost_l / total_quantity_l if total_quantity_l > 0 else 0
+            if trade_direction_l == 'BUY':
+                loss_l = (average_cost_l - current_price_l) * total_quantity_l
+            elif trade_direction_l == 'SELL':
+                loss_l = (current_price_l - average_cost_l) * total_quantity_l
+            if loss_l > initial_margin_l:
+                if trade_direction_l == 'BUY' and max_position_size_long != round((total_quantity_l * LongRisk), dpq):
+                    logger.info(f"原多单风控:{max_position_size_long}")
+                    max_position_size_long = round((total_quantity_l * LongRisk), dpq)
+                    status_manager.update_status('max_position_size_long', max_position_size_long)
+                    logger.info(f"多单风控仓位{max_position_size_long}")
+                elif trade_direction_l == 'SELL' and max_position_size_short != round((total_quantity_l * ShortRisk), dpq):
+                    logger.info(f"原空单风控:{max_position_size_short}")
+                    max_position_size_short = round((total_quantity_l * ShortRisk), dpq)
+                    status_manager.update_status('max_position_size_short', max_position_size_short)
+                    logger.info(f"空单风控仓位{max_position_size_short}")
+                logger.info(f"{loss_l:.{dpq}f} > {initial_margin_l:.{dpq}f}")
+                logger.info(f"头寸:{total_quantity_l:.{dpq}f}, 风控:{max_position_size_long if trade_direction_l == 'BUY' else max_position_size_short}, 持仓:{long_position if trade_direction_l == 'BUY' else short_position}")
+                return round(current_price_l, dpp)
+            if trade_direction_l == 'BUY':
+                current_price_l -= (current_price_l * amplitude_percent_l) * leverage_l
+            elif trade_direction_l == 'SELL':
+                current_price_l += (current_price_l * amplitude_percent_l) * leverage_l
         return round(current_price_l, dpp)
-      # 根据百分比和杠杆调整价格，根据交易方向确定涨跌
-      if trade_direction_l == 'BUY':
-        current_price_l -= (current_price_l * amplitude_percent_l) * leverage_l
-      elif trade_direction_l == 'SELL':
-        current_price_l += (current_price_l * amplitude_percent_l) * leverage_l
-      else:
-        raise ValueError("Invalid trade direction. Use 'BUY' or 'SELL'.")
-        break
 
-# 网格思路预筛
+    score_threshold = 25
+    if abs(score) < score_threshold:
+        sbsb = 0
+        logger.info(f"\nRSI {rsi.iloc[-1]:.2f} MFI {mfi.iloc[-1]:.2f} MACD {macd.iloc[-1]:.2f} \n%K {percent_k.iloc[-1]:.2f} %D {percent_d.iloc[-1]:.2f}\n总分 {score} 未达到阈值 {score_threshold}，\nsbsb: {sbsb}, ssbb: {ssbb}")
+    else:
+        def is_price_change_significant(current_price, ref_price):
+            global average_short_cost, average_long_cost
+            price_change_ratio = abs(current_price - ref_price) / max(current_price, ref_price)
+            significant_change = False
+            trade_method = ""
+            current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
+            liquidation_price = calculate_liquidation_price(initial_margin, current_price, FP, quantity_grid, 1, current_order_direction)
+            if abs(price_change_ratio) > FP:
+                if last_order_direction == current_order_direction:
+                    if current_order_direction == 'BUY':
+                        trade_method = "高价追买" if current_price > ref_price else "低价追买"
+                        significant_change = False if current_price > ref_price else True
+                    elif current_order_direction == 'SELL':
+                        trade_method = "低价追卖" if current_price < ref_price else "高价追卖"
+                        significant_change = False if current_price < ref_price else True
+                else:
+                    if current_order_direction == 'BUY':
+                        trade_method = "亏损买平" if current_price > ref_price else "盈利买平"
+                        significant_change = False if current_price > ref_price else True
+                    elif current_order_direction == 'SELL':
+                        trade_method = "亏损卖平" if current_price < ref_price else "盈利卖平"
+                        significant_change = False if current_price < ref_price else True
+            else:
+                trade_method = "频繁提交"
+            logger.info(f"相对于 {ref_price}，以 {current_price} 执行 {trade_method}" if significant_change else f"相对于 {ref_price}，禁止 {current_price} 执行 {trade_method}")
+            return significant_change, price_change_ratio
 
-  score_threshold = 25  #设置阈值
-  # 首先检查分数是否达到阈值
-  if abs(score) < score_threshold:
-    sbsb = 0
-    logger.info(
-      f"\nRSI {rsi.iloc[-1]:.2f} MFI {mfi.iloc[-1]:.2f} MACD {macd.iloc[-1]:.2f} \n%K {percent_k.iloc[-1]:.2f} %D {percent_d.iloc[-1]:.2f}\n总分 {score} 未达到阈值 {score_threshold}，\nsbsb: {sbsb},ssbb: {ssbb}"
-    )
-    # ssbb, sbsb 不变
-  else:
-    # 辅助函数，检查价格变化是否显著
-    def is_price_change_significant(current_price, ref_price):
-      global average_short_cost, average_long_cost
-      price_change_ratio = abs(current_price - ref_price) / max(current_price, ref_price)
-      significant_change = False
-      trade_method = ""
-      current_order_direction = 'BUY' if score >= score_threshold else 'SELL'
-      
-      liquidation_price = calculate_liquidation_price(
-        initial_margin, current_price, FP, quantity_grid, 1,
-        current_order_direction)  # 买入，多头
-      
-      # 通过一个简化的逻辑表达式来判断价格变化是否显著
-      if abs(price_change_ratio) > FP:
-        # 当上一次和这一次的交易方向相同
-        if last_order_direction == current_order_direction:
-            if current_order_direction == 'BUY':
-                if current_price > ref_price:
-                    trade_method = "高价追买"
-                    significant_change = False  # 高价追买不视为显著变化
-                else:
-                    trade_method = "低价追买"
-                    significant_change = True
-            elif current_order_direction == 'SELL':
-                if current_price < ref_price:
-                    trade_method = "低价追卖"
-                    significant_change = False  # 低价追卖不视为显著变化
-                else:
-                    trade_method = "高价追卖"
-                    significant_change = True
-        # 当上一次和这一次的交易方向不同
+        def make_decision(action, significant_change, sbsb_value, ssbb_value):
+            if significant_change:
+                return action, ssbb_value, sbsb_value
+            else:
+                action += " 价格变化不足"
+                return action, ssbb_value, 0
+
+        sbsb = 0
+        action = "无操作"
+        ref_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
+        significant_change, price_change_ratio = is_price_change_significant(current_price, ref_price)
+        if last_order_direction == 'BUY':
+            if score >= score_threshold:
+                action, ssbb, sbsb = make_decision("买入", significant_change, 1, 1)
+            elif score <= -score_threshold:
+                action, ssbb, sbsb = make_decision("卖出", significant_change, 1, 0)
+        elif last_order_direction == 'SELL':
+            if score >= score_threshold:
+                action, ssbb, sbsb = make_decision("平空", significant_change, 1, 1)
+            elif score <= -score_threshold:
+                action, ssbb, sbsb = make_decision("做空", significant_change, 1, 0)
         else:
-            if current_order_direction == 'BUY':
-                trade_method = "亏损买平" if current_price > ref_price else "盈利买平"
-                significant_change = False if current_price > ref_price else True
-            elif current_order_direction == 'SELL':
-                trade_method = "亏损卖平" if current_price < ref_price else "盈利卖平"
-                significant_change = False if current_price < ref_price else True
-      else:
-        trade_method = "频繁提交"
+            logger.info(f"无效的最后订单方向：{last_order_direction}")
+        logger.info(f"决策：{action}")
+        logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
+        logger.info(f"价格变化比例：{price_change_ratio:.2%}，触发比例 {FP:.2%}")
+        logger.info(f"sbsb: {sbsb}, ssbb: {ssbb}")
+    if temp_ssbb != ssbb:
+        temp_ssbb = ssbb
+        status_manager.update_status('ssbb', ssbb)
+        logger.info(f"ssbb 更新为 {ssbb}")
 
-      if significant_change:
-        logger.info(f"相对{ref_price}，以{current_price}{trade_method}")
-      else:
-        logger.info(f"相对{ref_price}，禁止{current_price}{trade_method}")
-      return significant_change, price_change_ratio
+    global min_quantity
+    if min_quantity_u >= 5:
+        calculated_min_quantity = math.ceil(min_quantity_u / current_price)
+        if min_quantity != calculated_min_quantity:
+            min_quantity = calculated_min_quantity
+            print(f"更新最小增仓量：{min_quantity}")
+            status_manager.update_status('min_quantity', min_quantity)
 
-    def make_decision(action, significant_change, sbsb_value, ssbb_value):
-      if significant_change:
-        ssbb, sbsb = ssbb_value, sbsb_value
-      else:
-        action += "价格变化不足"
-        ssbb, sbsb = ssbb_value, 0
-      return action, ssbb, sbsb
+    global quantity_grid, quantity_grid_u
+    absolute_position_difference = abs(long_position - short_position)
+    calculated_quantity_grid_based_on_rate = math.ceil(quantity_grid_rate * 0.01 * absolute_position_difference)
+    calculated_quantity_grid_based_on_u = math.ceil(quantity_grid_u / current_price)
+    calculated_quantity_grid_for_min = math.ceil(min_quantity_u / current_price)
+    quantity_grid_u = max(quantity_grid_u, 5)
+    new_quantity_grid = None
+    if quantity_grid_rate > 0 and calculated_quantity_grid_based_on_rate > max(quantity_grid, min_quantity):
+        new_quantity_grid = calculated_quantity_grid_based_on_rate
+        update_message = "更新单位网格量1："
+    elif quantity_grid_u > 5 and quantity_grid != calculated_quantity_grid_based_on_u:
+        new_quantity_grid = calculated_quantity_grid_based_on_u
+        update_message = "更新单位网格量2："
+    elif quantity_grid < calculated_quantity_grid_for_min:
+        new_quantity_grid = calculated_quantity_grid_for_min
+        update_message = "更新单位网格量到最小值："
+    if new_quantity_grid is not None and new_quantity_grid != quantity_grid:
+        quantity_grid = new_quantity_grid
+        print(update_message + f"{quantity_grid}")
+        status_manager.update_status('quantity_grid', quantity_grid)
+    return ssbb, sbsb
 
-    sbsb = 0  # 重置 sbsb
-    action = "无操作"
-    ref_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
-    significant_change, price_change_ratio = is_price_change_significant(
-      current_price, ref_price)
-
-    # Decision-making logic
-    if last_order_direction == 'BUY':
-      if score >= score_threshold:
-        action, ssbb, sbsb = make_decision("买入", significant_change, 1, 1)
-      elif score <= -score_threshold:
-        action, ssbb, sbsb = make_decision("卖出", significant_change, 1, 0)
-    elif last_order_direction == 'SELL':
-      if score >= score_threshold:
-        action, ssbb, sbsb = make_decision("平空", significant_change, 1, 1)
-      elif score <= -score_threshold:
-        action, ssbb, sbsb = make_decision("做空", significant_change, 1, 0)
-    else:
-      logger.info(f"无效的最后订单方向：{last_order_direction}")
-
-    logger.info(f"决策：{action}")
-    logger.info(f"分数：{score}，阈值：{score_threshold}，价格变化显著：{significant_change}")
-    logger.info(f"价格变化比：{price_change_ratio:.2%}触发比{FP:.2%}")
-    logger.info(f"sbsb: {sbsb},ssbb: {ssbb}")
-
-  # 确定是否更新 ssbb
-  if temp_ssbb != ssbb:
-    temp_ssbb = ssbb  # 更新临时变量
-    status_manager.update_status('ssbb', ssbb)  # 更新文件
-    logger.info(f"ssbb updated to {ssbb}")
-
-  global min_quantity
-  if min_quantity_u >= 5:
-    calculated_min_quantity = math.ceil(min_quantity_u / current_price)
-    if min_quantity != calculated_min_quantity:
-        min_quantity = calculated_min_quantity
-        print(f"更新最小增仓量：{min_quantity}")
-        status_manager.update_status('min_quantity', min_quantity)
-  global quantity_grid, quantity_grid_u
-  # 计算可能用到的值
-  absolute_position_difference = abs(long_position - short_position)
-  calculated_quantity_grid_based_on_rate = math.ceil(quantity_grid_rate * 0.01 * absolute_position_difference)
-  calculated_quantity_grid_based_on_u = math.ceil(quantity_grid_u / current_price)
-  calculated_quantity_grid_for_min = math.ceil(min_quantity_u / current_price)
-  # 确保 quantity_grid_u 的最小值
-  quantity_grid_u = max(quantity_grid_u, 5)
-
-  # 初始化 quantity_grid 的更新值为 None，仅当需要更新时才更改
-  new_quantity_grid = None
-
-  # 根据比率计算的网格更新条件
-  if quantity_grid_rate > 0 and calculated_quantity_grid_based_on_rate > max(quantity_grid, min_quantity):
-      new_quantity_grid = calculated_quantity_grid_based_on_rate
-      update_message = "更新单位网格量1："
-
-  # 根据 u 计算的网格更新条件
-  elif quantity_grid_u > 5 and quantity_grid != calculated_quantity_grid_based_on_u:
-      new_quantity_grid = calculated_quantity_grid_based_on_u
-      update_message = "更新单位网格量2："
-
-  # 检查是否需要更新为最小计算网格
-  elif quantity_grid < calculated_quantity_grid_for_min:
-      new_quantity_grid = calculated_quantity_grid_for_min
-      update_message = "更新单位网格量到最小值："
-
-  # 如果 new_quantity_grid 已经设定，进行更新
-  if new_quantity_grid is not None and new_quantity_grid != quantity_grid:
-      quantity_grid = new_quantity_grid
-      print(update_message + f"{quantity_grid}")
-      status_manager.update_status('quantity_grid', quantity_grid)
-
-
-  return ssbb, sbsb  # 返回 ssbb 和 sbsb 的值
-
-
-# 计算下一个买单的参数,leverage杠杆倍数暂时没有用
 def calculate_next_order_parameters(price, leverage, order_position):
-  global last_order_direction
-  try:
-    #    order_position = 'lb'
-    next_price = round(price, dpp)  #
-    reference_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
-
-    if reference_price and reference_price != 0 and next_price != reference_price:
-      grid_ratio = max(current_price, reference_price) / min(
-        current_price, reference_price)
-      grid_count = int(math.log(grid_ratio) / math.log(1 + FP))
-      logger.info(f"1优化前网格数量: {grid_count}")
-      grid_count = (1 / (1 + math.exp(- grid_count / 6)) - 0.5) * 2 * 15
-      logger.info(f"1Sigmoid优化网格数量: {grid_count:.1f}\n")
-      #www.desmos.com/calculator?lang=zh-TW 
-      #y=\left(1/\left(1+e^{\left(-\frac{x}{6}\right)}\right)-0.5\right)\cdot30
-    elif reference_price == 0:
-      grid_count = 1
-      logger.info(f"首次{last_order_direction}下单: {grid_count}\n")
-    else:
-      grid_count = 0  #差异小于阈值FP
-      logger.info(f"差异小于阈值FP: {grid_count}\n")
-    
-    # 根据网格数量调整下单量
-
-    if order_position == 'lb' :
-      origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * quantity_grid_rate))
-    elif order_position == 'ss':
-      origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * quantity_grid_rate))
-    logger.info(f"2优化前交易量: {origQty}")
-    origQty = adjust_quantity(max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity))
-    logger.info(f"2Sigmoid.{continuous_add_count_lb}b/{continuous_add_count_ss}.s优化交易量: {origQty}")
-    return next_price, origQty
-  except Exception as e:
-    logger.error(f"执行calculate_next_order_parameters出错: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-    return None, None  # 确保在出错的情况下返回两个值
-
+    """
+    根据当前价格、杠杆及订单意图计算下一次下单价格及交易量参数。
+    """
+    global last_order_direction
+    try:
+        next_price = round(price, dpp)
+        reference_price = last_order_price if last_order_direction == 'BUY' else last_s_order_price
+        if reference_price and reference_price != 0 and next_price != reference_price:
+            grid_ratio = max(current_price, reference_price) / min(current_price, reference_price)
+            grid_count = int(math.log(grid_ratio) / math.log(1 + FP))
+            logger.info(f"1 优化前网格数量: {grid_count}")
+            grid_count = (1 / (1 + math.exp(-grid_count / 6)) - 0.5) * 2 * 15
+            logger.info(f"1 S型函数优化后的网格数量: {grid_count:.1f}\n")
+        elif reference_price == 0:
+            grid_count = 1
+            logger.info(f"首次 {last_order_direction} 下单: {grid_count}\n")
+        else:
+            grid_count = 0
+            logger.info(f"差异小于阈值 FP: {grid_count}\n")
+        if order_position == 'lb':
+            origQty = adjust_quantity(quantity_grid * grid_count * (1 + FP * grid_adjustment_factor))
+        elif order_position == 'ss':
+            origQty = adjust_quantity(quantity_grid * grid_count * (1 - FP * grid_adjustment_factor))
+        logger.info(f"2 优化前交易量: {origQty}")
+        origQty = adjust_quantity(max(1 / (1 + math.exp(4 - max(continuous_add_count_lb, continuous_add_count_ss))) * 2 * origQty, min_quantity))
+        logger.info(f"2 S型函数优化交易量: {origQty} (lb计数: {continuous_add_count_lb} / ss计数: {continuous_add_count_ss})")
+        return next_price, origQty
+    except Exception as e:
+        logger.error(f"执行 calculate_next_order_parameters 出错: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+        return None, None
 
 def adjust_quantity(ad_quantity):
-    """调整下单量以满足最小值和步进要求。
-    
-    参数:
-    ad_quantity (float): 原始下单量
-    """
-    # 检查下单量是否至少为最小值
+    """调整下单量以满足最小下单量和步进要求。"""
     if ad_quantity < min_quantity:
-        logger.error(f"quantity小于最小下单量: {ad_quantity}")
-        return 0  # 如果小于最小值，则设置为0
-    
-    # 调整为符合步进大小的最接近的较大值
+        logger.error(f"下单量小于最小下单量: {ad_quantity}")
+        return 0
     ad_quantity = math.ceil(ad_quantity / step_size) * step_size
-    
-    # 记录调整后的量
     logger.info(f"调整后的下单量: {ad_quantity}")
     return ad_quantity
 
+def update_order_status(response):
+    """
+    根据服务器返回的订单响应更新订单状态及相关全局变量。
 
-def update_order_status(response, position):
-  global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, add_rate, quantity, last_order_direction, average_long_cost, average_short_cost, average_long_position, average_short_position, quantity_grid_rate
-  if 'price' in response and 'origQty' in response and 'type' in response and 'side' in response:
-    update_price = float(response['price'] if response['type'] !=
-                         'TRAILING_STOP_MARKET' else response['activatePrice'])
-    quantity_response = float(response['origQty'])
-    logger.info(f"#######################")
-    logger.info(f"=======cpo成功===========")
-    logger.info(f"#######################")
-    logger.info(f"=======================")
-    logger.info(f"cpo成功{response['side']}：{update_price}")
-    update_position_cost(update_price, quantity_response,
-                         response['positionSide'], response['side'])
-    def update_position_costs_and_quantities(response_side, last_order_direction, update_price, quantity_response, transaction_fee_rate, dpp, average_long_cost, average_long_position, average_short_cost, average_short_position, logger):
-      
-      """
-      更新多头和空头的平均成本及持仓量。
+    优化思路：
+      - 不依赖外部传入的 position 参数，而是直接根据 response 中的 side 和 positionSide 判断订单标签
+      - 更新持仓成本（调用 update_position_cost ）
+      - 根据订单方向更新连续追加计数及平均持仓成本、数量（通过内部函数 update_position 完成）
+      - 更新 last_order_price/last_s_order_price 及订单ID
+      - 最后通过 status_manager 将所有更新的状态保存
 
-      参数:
-      - response_side: 当前订单方向（'BUY' 或 'SELL'）
-      - last_order_direction: 上一次的订单方向
-      - update_price: 当前订单的价格
-      - quantity_response: 当前订单的数量
-      - transaction_fee_rate: 交易费率
-      - dpp: 小数点后的位数（用于round）
-      - average_long_cost: 多头的平均成本
-      - average_long_position: 多头的持仓量
-      - average_short_cost: 空头的平均成本
-      - average_short_position: 空头的持仓量
-      - logger: 日志记录器
-      """
-      logger.info(f"更新前lb/ss计数{continuous_add_count_lb}/{continuous_add_count_ss}")
-      if response_side == 'BUY':
+    参数:
+      response: 服务器返回的订单响应字典，必须包含 'price', 'origQty', 'type', 'side', 'positionSide', 'orderId' 等字段
+    """
+    global stime, ltime, long_position, short_position, last_order_price, last_s_order_price, FP, add_rate, quantity, last_order_direction
+    global average_long_cost, average_short_cost, average_long_position, average_short_position, quantity_grid_rate
+    try:
+        # 检查必须字段
+        required_keys = ['price', 'origQty', 'type', 'side', 'positionSide', 'orderId']
+        if not all(key in response for key in required_keys):
+            logger.error("响应中缺失必要字段，无法更新订单状态")
+            return
 
-          if last_order_direction == 'SELL':
-              # 重置空头持仓
-              average_short_cost, average_short_position = 0, 0
-              average_long_cost = round(update_price * (1 + transaction_fee_rate), dpp)
-              average_long_position = quantity_response
-          else:
-              new_total_cost = (average_long_cost * average_long_position + update_price * quantity_response * (1 + transaction_fee_rate))
-              new_total_quantity = average_long_position + quantity_response
-              average_long_cost = round(new_total_cost / new_total_quantity, dpp) if new_total_quantity > 0 else 0
-              average_long_position = new_total_quantity
+        # 获取更新价格（对于 TRAILING_STOP_MARKET 尝试从 activatePrice 获取）
+        if response['type'] != 'TRAILING_STOP_MARKET':
+            update_price = float(response['price'])
+        else:
+            update_price = float(response.get('activatePrice', response['price']))
+        quantity_response = float(response['origQty'])
 
-      else:  # response_side == 'SELL'
+        logger.info("#######################")
+        logger.info("======= cpo 成功 ==========")
+        logger.info("#######################")
+        logger.info("=======================")
+        logger.info(f"cpo 成功 {response['side']}：{update_price}")
 
-          if last_order_direction == 'BUY':
-              # 重置多头持仓
-              average_long_cost, average_long_position = 0, 0
-              average_short_cost = round(update_price * (1 - transaction_fee_rate), dpp)
-              average_short_position = quantity_response
-          else:
-              new_total_cost = (average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate))
-              new_total_quantity = average_short_position + quantity_response
-              average_short_cost = round(new_total_cost / new_total_quantity, dpp) if new_total_quantity > 0 else 0
-              average_short_position = new_total_quantity
+        # 更新持仓成本（函数内部已处理多头和空头的逻辑）
+        update_position_cost(update_price, quantity_response, response['positionSide'], response['side'])
 
-      logger.info(f"1更新后的持仓 - 多头成本: {average_long_cost}, 多头持仓: {average_long_position}, 空头成本: {average_short_cost}, 空头持仓: {average_short_position}，lb/ss计数{continuous_add_count_lb}/{continuous_add_count_ss}")
-      return average_long_cost, average_long_position, average_short_cost, average_short_position
-      
-    def update_position(side, update_price, quantity_response, transaction_fee_rate, 
-                     average_long_cost, average_long_position, average_short_cost, average_short_position):
-      global continuous_add_count_lb, continuous_add_count_ss
-      if side == 'BUY':
-          continuous_add_count_lb += 1.5
-          continuous_add_count_ss = 0.5
-          # 增加多头或减少空头
-          if average_short_position > 0:
-              # 减少空头仓位
-              reduced_quantity = min(average_short_position, quantity_response)
-              average_short_position -= reduced_quantity
-              quantity_response -= reduced_quantity
-              # 如果完全平掉空头仓位，重置平均成本
-              if average_short_position == 0:
-                  average_short_cost = 0
-              if quantity_response <= 0:
-                  return average_long_cost, average_long_position, average_short_cost, average_short_position
-          # 增加多头仓位
-          total_cost = average_long_cost * average_long_position + update_price * quantity_response * (1 + transaction_fee_rate)
-          average_long_position += quantity_response
-          average_long_cost = total_cost / average_long_position if average_long_position > 0 else 0
+        # 内部辅助函数：根据订单 side 更新平均成本和持仓数量
+        def update_position(side, update_price, quantity_response, transaction_fee_rate,
+                            avg_long_cost, avg_long_pos, avg_short_cost, avg_short_pos):
+            global continuous_add_count_lb, continuous_add_count_ss
+            side = side.upper()
+            if side == 'BUY':
+                continuous_add_count_lb += 1.5
+                continuous_add_count_ss = 0.5
+                # 如果存在空头持仓，则先减仓
+                if avg_short_pos > 0:
+                    reduced_quantity = min(avg_short_pos, quantity_response)
+                    avg_short_pos -= reduced_quantity
+                    quantity_response -= reduced_quantity
+                    if avg_short_pos == 0:
+                        avg_short_cost = 0
+                    if quantity_response <= 0:
+                        return avg_long_cost, avg_long_pos, avg_short_cost, avg_short_pos
+                total_cost = avg_long_cost * avg_long_pos + update_price * quantity_response * (1 + transaction_fee_rate)
+                avg_long_pos += quantity_response
+                avg_long_cost = total_cost / avg_long_pos if avg_long_pos > 0 else 0
+            elif side == 'SELL':
+                continuous_add_count_lb = 1.5
+                continuous_add_count_ss += 0.5
+                # 如果存在多头持仓，则先减仓
+                if avg_long_pos > 0:
+                    reduced_quantity = min(avg_long_pos, quantity_response)
+                    avg_long_pos -= reduced_quantity
+                    quantity_response -= reduced_quantity
+                    if avg_long_pos == 0:
+                        avg_long_cost = 0
+                    if quantity_response <= 0:
+                        return avg_long_cost, avg_long_pos, avg_short_cost, avg_short_pos
+                total_cost = avg_short_cost * avg_short_pos + update_price * quantity_response * (1 - transaction_fee_rate)
+                avg_short_pos += quantity_response
+                avg_short_cost = total_cost / avg_short_pos if avg_short_pos > 0 else 0
+            status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
+            status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
+            return avg_long_cost, avg_long_pos, avg_short_cost, avg_short_pos
 
-      elif side == 'SELL':
-          continuous_add_count_lb = 1.5
-          continuous_add_count_ss += 0.5
-          # 增加空头或减少多头
-          if average_long_position > 0:
-              # 减少多头仓位
-              reduced_quantity = min(average_long_position, quantity_response)
-              average_long_position -= reduced_quantity
-              quantity_response -= reduced_quantity
-              # 如果完全平掉多头仓位，重置平均成本
-              if average_long_position == 0:
-                  average_long_cost = 0
-              if quantity_response <= 0:
-                  return average_long_cost, average_long_position, average_short_cost, average_short_position
-          # 增加空头仓位
-          total_cost = average_short_cost * average_short_position + update_price * quantity_response * (1 - transaction_fee_rate)
-          average_short_position += quantity_response
-          average_short_cost = total_cost / average_short_position if average_short_position > 0 else 0
-      status_manager.update_status('continuous_add_count_lb', continuous_add_count_lb)
-      status_manager.update_status('continuous_add_count_ss', continuous_add_count_ss)
-      return average_long_cost, average_long_position, average_short_cost, average_short_position
-    
-    average_long_cost, average_long_position, average_short_cost, average_short_position = update_position(response['side'], update_price, quantity_response, transaction_fee_rate, 
-       average_long_cost, average_long_position, average_short_cost, average_short_position)
-    
-    logger.info(f"更新后的持仓 - 多头成本: {average_long_cost},{average_long_position} \n 更新后的持仓 - 空头成本: {average_short_cost},{average_short_position}")
-    status_manager.update_status('average_long_cost', average_long_cost)
-    status_manager.update_status('average_short_cost', average_short_cost)
-    status_manager.update_status('average_long_position',
-                                 average_long_position)
-    status_manager.update_status('average_short_position',
-                                 average_short_position)
-    logger.info(f"update_price to last_order{update_price}")
-    if position in ('lb', 'sb'):
-      last_order_price = update_price
-      last_order_orderId = response['orderId']
-      status_manager.update_status('last_order_orderId', last_order_orderId)
-    elif position in ('ls', 'ss'):
-      last_s_order_price = update_price
-      last_s_order_orderId = response['orderId']
-      status_manager.update_status('last_s_order_orderId',
-                                   last_s_order_orderId)
-    status_manager.update_status('last_order_price', last_order_price)
-    status_manager.update_status('last_s_order_price', last_s_order_price)
+        # 更新平均成本和仓位数量（根据 response['side'] 及其他参数）
+        average_long_cost, average_long_position, average_short_cost, average_short_position = update_position(
+            response['side'], update_price, quantity_response, transaction_fee_rate,
+            average_long_cost, average_long_position, average_short_cost, average_short_position
+        )
 
-    if quantity != math.ceil(quantity_u / current_price):
-      if quantity_u >= 5:
-        quantity = math.ceil(quantity_u / current_price)
-        print(f"更新单格量：{quantity}")
+        logger.info(f"更新后的持仓 - 多头成本: {average_long_cost}, 多头持仓: {average_long_position}, "
+                    f"空头成本: {average_short_cost}, 空头持仓: {average_short_position}")
+        status_manager.update_status('average_long_cost', average_long_cost)
+        status_manager.update_status('average_short_cost', average_short_cost)
+        status_manager.update_status('average_long_position', average_long_position)
+        status_manager.update_status('average_short_position', average_short_position)
+
+        # 根据 response 中的 side 与 positionSide 自动确定订单标签
+        side_resp = response['side'].upper()
+        pos_side_resp = response['positionSide'].upper()
+        order_tag = None
+        if pos_side_resp == "LONG" and side_resp == "BUY":
+            order_tag = "lb"
+        elif pos_side_resp == "LONG" and side_resp == "SELL":
+            order_tag = "ls"
+        elif pos_side_resp == "SHORT" and side_resp == "SELL":
+            order_tag = "ss"
+        elif pos_side_resp == "SHORT" and side_resp == "BUY":
+            order_tag = "sb"
+        else:
+            logger.warning(f"无法根据 side:{side_resp} 与 positionSide:{pos_side_resp} 确定订单标签")
+
+        logger.info(f"将更新价格设为 {order_tag}: {update_price}")
+        if order_tag in ('lb', 'sb'):
+            last_order_price = update_price
+            last_order_orderId = response['orderId']
+            status_manager.update_status('last_order_orderId', last_order_orderId)
+        elif order_tag in ('ls', 'ss'):
+            last_s_order_price = update_price
+            last_s_order_orderId = response['orderId']
+            status_manager.update_status('last_s_order_orderId', last_s_order_orderId)
+        else:
+            logger.warning("订单标签为空，无法更新 last_order_price/last_s_order_price")
+
+        status_manager.update_status('last_order_price', last_order_price)
+        status_manager.update_status('last_s_order_price', last_s_order_price)
+
+        # 更新单位网格量（quantity）—如果不等于 math.ceil(quantity_u/current_price) 则更新
+        if quantity != math.ceil(quantity_u / current_price):
+            if quantity_u >= 5:
+                quantity = math.ceil(quantity_u / current_price)
+                print(f"更新单格量：{quantity}")
+                status_manager.update_status('quantity', quantity)
+
+        # 根据 martingale 策略调整下单量
+        quantity = float(quantity - min_quantity) * float(martingale) + min_quantity
         status_manager.update_status('quantity', quantity)
 
-    quantity = float(quantity - min_quantity) * float(
-      martingale) + min_quantity  #单位交易量，网格quantity_grid，对冲add_position
-    status_manager.update_status('quantity', quantity)
-    FP = float(FP) * float(leverage)
-    add_rate = float(add_rate) * float(leverage)
-    quantity_grid_rate = float(quantity_grid_rate) * float(leverage)
-    status_manager.update_status('FP', FP)
-    status_manager.update_status('add_rate', add_rate)
-    status_manager.update_status('quantity_grid_rate', quantity_grid_rate)
-    last_order_direction = response['side']
-    status_manager.update_status('last_order_direction', last_order_direction)
-    time_str = current_time.strftime("%H:%M:%S")  # 格式化时间字符串
-    logger.info(
-      "\n" + "=" * 50 + f"\n== 订单时间: {time_str} " + " " *
-      (30 - len(time_str)) + "==\n" + f"== 当前价格: {current_price:.{dpp}f} " +
-      " " * (37 - len(str(current_price))) + "==\n" +
-      f"== 数量: {response['origQty']} | 方向: {position} | 价格: {update_price:.{dpp}f} "
-      + " " * (10 - len(str(update_price)) - len(str(response['origQty'])) -
-               len(position)) + "==\n" + f"== 订单ID: {response['orderId']} " +
-      " " * (40 - len(str(response['orderId']))) + "==\n" + "=" * 50 + "\n")
+        # 根据杠杆调整 FP, add_rate, quantity_grid_rate
+        FP = float(FP) * float(leverage)
+        add_rate = float(add_rate) * float(leverage)
+        quantity_grid_rate = float(quantity_grid_rate) * float(leverage)
+        status_manager.update_status('FP', FP)
+        status_manager.update_status('add_rate', add_rate)
+        status_manager.update_status('quantity_grid_rate', quantity_grid_rate)
 
-    # 新增订单记录逻辑
-    order_record = {
-      'order_time': time_str,
-      'order_id': response['orderId'],
-      'type': response['type'],
-      'positionSide': response['positionSide'],
-      'side': response['side'],
-      'Price': response['price'],
-      'quantity': response['origQty'],
-      'status': response['status']  # 初始状态设置为未成交
-    }
-    update_order_records(order_record)
-    logger.info(f"暂停3,{order_interval}")
-    time.sleep(order_interval)  # 等待12秒
+        last_order_direction = response['side']
+        status_manager.update_status('last_order_direction', last_order_direction)
 
+        time_str = current_time.strftime("%H:%M:%S")
+        logger.info("\n" + "=" * 50 + f"\n== 订单时间: {time_str} " + " " * (30 - len(time_str)) + "==\n" +
+                    f"== 当前价格: {current_price:.{dpp}f} " + " " * (37 - len(str(current_price))) + "==\n" +
+                    f"== 数量: {response['origQty']} | 方向: {order_tag if order_tag else '未知'} | 价格: {update_price:.{dpp}f} " +
+                    " " * (10 - len(str(update_price)) - len(str(response['origQty'])) - len(order_tag if order_tag else "")) + "==\n" +
+                    f"== 订单ID: {response['orderId']} " + " " * (40 - len(str(response['orderId']))) + "==\n" +
+                    "=" * 50 + "\n")
+
+        # 保存订单记录
+        order_record = {
+            'order_time': time_str,
+            'order_id': response['orderId'],
+            'type': response['type'],
+            'positionSide': response['positionSide'],
+            'side': response['side'],
+            'Price': response['price'],
+            'quantity': response['origQty'],
+            'status': response['status']  # 初始状态设为未成交
+        }
+        update_order_records(order_record)
+        logger.info(f"暂停3, {order_interval}")
+        time.sleep(order_interval)  # 等待指定的下单间隔时间
+
+    except Exception as e:
+        logger.error(f"更新订单状态时出错: {e}")
+        logger.debug(traceback.format_exc())
+
+def query_order(order_id):
+    try:
+        response = client.query_order(symbol=symbol, orderId=order_id, recvWindow=5000)
+        logger.info(response)
+    except ClientError as error:
+        logger.info(f"w2: {error}")
+        logger.error(f"查询订单时出错。状态: {error.status_code}, 错误码: {error.error_code}, 错误消息: {error.error_message}")
+    except Exception as e:
+        logger.error(f"查询订单时发生未预期的错误: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+
+
+def handle_client_error(error, current_price, order_params):
+    error_messages = {-1021: "时间同步问题", 400: "请求过多或订单超时", -1003: "请求过多或订单超时"}
+    logger.info(f"w3: {error}")
+    logger.error(f"下单时出错。状态: {error.status_code}, 错误码: {error.error_code}, 错误消息: {error.error_message}, 最新价格：{current_price}, 下单参数: {order_params}")
+    error_message = error_messages.get(error.error_code, "未知错误")
+    logger.error(f"发生错误: {error_message}")
+    if error.error_code in [-1021, 400, -1003]:
+        logger.info(f"暂停6, {ltime}")
+        time.sleep(ltime)
+    else:
+        logger.info(f"暂停7, {12}")
+        time.sleep(12)
+
+
+def dynamic_tracking(symbol, trade_direction, callback_rate, optimal_price, trade_quantity, start_order_price=None, start_price_reached=False, trade_executed=False):
+    global current_price, add_position_1
+    try:
+        logger.info(f"****** 动态追踪 {trade_direction} ******")
+        logger.info(f"触发 {start_order_price}: {start_price_reached} 成交 {trade_executed} 回调率 {round(callback_rate, dpp)} 最佳 {optimal_price} 量 {trade_quantity}")
+        # 参数校验
+        if trade_direction not in ['lb', 'ss']:
+            raise ValueError(f"交易方向 {trade_direction} 必须是 'lb' 或 'ss'")
+        if not all(isinstance(x, (int, float)) and x > 0 for x in [callback_rate, optimal_price, trade_quantity]):
+            raise ValueError(f"回调率 {round(callback_rate, dpp)}、最佳价格 {optimal_price} 和交易数量 {trade_quantity} 必须是正数")
+        if start_order_price is not None and not isinstance(start_order_price, (int, float)):
+            raise ValueError(f"启动价格 {start_order_price} 必须是数字")
+        if trade_executed == True:
+            raise ValueError("交易已执行，请勿重复执行")
+        # 获取当前市场价格
+        current_price, last_price_update_time = get_current_price(symbol)
+        # 检查当前价格是否达到或超过启动价格
+        if start_order_price is None and start_price_reached == False:
+            start_order_price = round(optimal_price * (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), dpp)
+            logger.info(f"启动价格为 None 且未触发，则采用最佳价格调整后的 {round(add_rate, dpp)}：{start_order_price}")
+        if (trade_direction == 'lb' and start_order_price is not None and current_price <= start_order_price) or \
+           (trade_direction == 'ss' and start_order_price is not None and current_price >= start_order_price):
+            start_price_reached = True
+            logger.info(f"触发启动价格：{start_order_price}")
+        if start_price_reached:
+            # 计算价格变化比例
+            price_change = abs(current_price - optimal_price) / optimal_price
+            # 检查是否达到回调率阈值
+            if price_change >= callback_rate:
+                if trade_direction == 'lb' and current_price > optimal_price:
+                    logger.info("上涨达到回调率，执行买入操作")
+                    if place_limit_order(symbol, trade_direction, 'QUEUE_5', trade_quantity, callback):
+                        trade_executed = True
+                        start_price_reached = False
+                        trade_quantity = 0
+                elif trade_direction == 'ss' and current_price < optimal_price:
+                    logger.info("下跌达到回调率，执行卖出操作")
+                    if place_limit_order(symbol, trade_direction, 'QUEUE_5', trade_quantity, callback):
+                        trade_executed = True
+                        start_price_reached = False
+                        trade_quantity = 0
+                else:
+                    logger.error("无效的交易方向")
+            status_manager.update_status('add_position_1', add_position_1)
+            # 如果当前价格更有利，则更新最佳价格
+            if (trade_direction == 'lb' and current_price < optimal_price) or \
+               (trade_direction == 'ss' and current_price > optimal_price):
+                optimal_price = current_price
+                logger.info(f"更新最佳价格：{optimal_price}")
+        return start_price_reached, trade_executed, optimal_price, trade_quantity
+    except ValueError as e:
+        logger.error(f"参数非法: {e}")
+        return start_price_reached, trade_executed, optimal_price, trade_quantity
+    except Exception as e:
+        logger.error(f"执行动态追踪时发生错误: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+        return False, True, optimal_price, trade_quantity
+
+
+def breakeven_stop_profit(symbol, trade_direction, breakeven_price, trade_quantity, start_order_price=None, start_price_reached=False, trade_executed=False):
+    global current_price
+    try:
+        logger.info(f"执行保本止盈 {trade_direction}")
+        logger.info(f"触发状态 {start_price_reached}:{start_order_price} 成交 {trade_executed} 保本价 {breakeven_price} 交易量 {trade_quantity}")
+        if trade_direction not in ['lb', 'ss']:
+            raise ValueError(f"交易方向 {trade_direction} 必须是 'lb' 或 'ss'")
+        if breakeven_price <= 0 or trade_quantity <= 0:
+            raise ValueError(f"保本价格 {breakeven_price} 和交易数量 {trade_quantity} 必须大于 0")
+        if start_order_price is not None and start_order_price <= 0:
+            raise ValueError(f"启动价格 {start_order_price} 必须大于 0")
+        if trade_quantity < min_quantity:
+            raise ValueError(f"交易数量 {trade_quantity} 必须大于等于最小下单量 (min_quantity)")
+        decimal_places = 3
+        trade_quantity_float = float(trade_quantity)
+        step_size_float = float(step_size)
+        adjusted_quantity = round(trade_quantity_float / step_size_float, decimal_places)
+        if not adjusted_quantity.is_integer():
+            raise ValueError(f"交易数量 {trade_quantity} 必须是最小调整步长 {step_size} 的整数倍")
+        if trade_executed == True:
+            raise ValueError("交易已执行，请勿重复执行")
+        current_price, last_price_update_time = get_current_price(symbol)
+        if start_order_price is not None:
+            if not isinstance(start_order_price, (int, float)):
+                raise ValueError("启动价格必须是数字")
+            start_price_reached = (trade_direction == 'lb' and current_price <= start_order_price) or \
+                                  (trade_direction == 'ss' and current_price >= start_order_price)
+        else:
+            start_price_reached = True
+        if start_price_reached:
+            logger.info(f"触发启动价格：{start_order_price}")
+            if (trade_direction == 'lb' and current_price >= breakeven_price) or \
+               (trade_direction == 'ss' and current_price <= breakeven_price):
+                logger.info(f"达到保本价，执行 {trade_direction} 操作。当前价格: {current_price}")
+                if place_limit_order(symbol, trade_direction, 'QUEUE_5', trade_quantity, callback):
+                    trade_executed = True
+                    start_price_reached = False
+                    trade_quantity = 0
+            else:
+                logger.info("当前价格未达到保本止盈点")
+        return start_price_reached, trade_executed, trade_quantity
+    except ValueError as e:
+        logger.error(f"参数错误: {e}")
+        return start_price_reached, trade_executed, trade_quantity
+    except Exception as e:
+        logger.error(f"执行保本止盈时发生错误: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+        return False, True, trade_quantity
+
+
+def trading_strategy():
+    # 注：启动成本 starta_cost 此处改为从 current_status 获取
+    global starta_price, starta_position, starta_cost, trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4, add_position_1, add_position
+    logger.info(f"******** {starta_direction} 对冲中 ********")
+    try:
+        if trading_strategy_enabled == 0:
+            logger.info("交易策略未启用")
+            return
+        if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price)):
+            add_position = max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price))
+            logger.info(f"当前 {round(add_position_rate * 0.01, 3)} 更新单位对冲量：{add_position}")
+            status_manager.update_status('add_position', add_position)
+        if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
+            if add_position_u >= 5:
+                add_position = math.ceil(add_position_u / current_price)
+                logger.info(f"更新单位对冲量：{add_position}")
+                status_manager.update_status('add_position', add_position)
+        logger.info(f"启动仓位：{starta_position}")
+        if starta_position == 0:
+            logger.info("未开仓，初始化对冲")
+            trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4 = True, False, 0, True, False, 0, True, False, 0, True, False, 0
+            starta_price = current_price
+            trigger_price = starta_price
+            starta_cost = starta_price if long_position == short_position == 0 else (long_cost if long_position >= short_position else short_cost)
+            add_position_1 = 0
+            logger.info(f"触发价格1：{trigger_price}")
+            starta_position = add_position if add_position > 0 else 1
+        trigger_price = round((min(starta_price if starta_cost == 0 or starta_cost is None else starta_cost, starta_price) if starta_direction == 'lb' else max(starta_cost, starta_price)) * (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
+        logger.info(f"触发价格2：{trigger_price}")
+        profit_price = round(starta_cost * (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
+        if starta_price == 0:
+            starta_price, last_price_update_time = get_current_price(symbol)
+            logger.info(f"启动价格调整为当前价格：{starta_price}")
+        if starta_cost == 0 or (starta_cost < starta_price and starta_direction == 'lb') or (starta_cost > starta_price and starta_direction == 'ss'):
+            starta_cost = starta_price
+            logger.info(f"启动成本调整为启动价格：{starta_cost}")
+        logger.info(f"-开始 {starta_direction} 对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
+        logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
+        logger.info(f"-追加幅度：{round(add_rate, dpp)}, 单位追加量：{add_position}")
+        logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
+        conditions_enabled = {
+            'ssbb_logic': ssbb_logic_enabled,
+            'price_change': price_change_enabled,
+            'cost_price_logic': cost_price_logic_enabled,
+            'technical_indicators': technical_indicators_enabled,
+            'macd_signal': macd_signal_enabled
+        }
+        score = calculate_score(conditions_enabled)
+        add_direction = 'lb' if starta_direction == 'ss' else 'ss'
+        if not trade_executed_1 and add_position_1 != 0:
+            logger.info(f"动态追加1 {trade_executed_1}，触发状态 {start_price_reached_1}：最佳价格 {optimal_price_1}")
+            add_position_temp = add_position_1
+            start_price_reached_1, trade_executed_1, optimal_price_1, add_position_1 = dynamic_tracking(
+                symbol, starta_direction, add_rate, optimal_price_1, add_position_1,
+                start_price_reached=start_price_reached_1, trade_executed=trade_executed_1)
+            if add_position_temp != add_position_1:
+                starta_position += add_position_temp  # 更新持仓量
+                trade_executed_2 = True
+                logger.info(f"动态追加1 {trade_executed_1}，交易完成，更新持仓量：{starta_position}；保价强追2更新 {trade_executed_2}")
+            logger.info(f"动态追加1 {trade_executed_1}，触发状态 {start_price_reached_1}：最佳价格 {optimal_price_1}")
+        if not trade_executed_2 and breakeven_price_2 != 0:
+            logger.info(f"保价强追2 {trade_executed_2}，触发状态 {start_price_reached_2}：保本价格 {breakeven_price_2}")
+            add_position_temp = add_position_1
+            start_price_reached_2, trade_executed_2, add_position_1 = breakeven_stop_profit(
+                symbol, starta_direction, breakeven_price_2, add_position_1,
+                start_price_reached=start_price_reached_2, trade_executed=trade_executed_2)
+            if add_position_temp != add_position_1:
+                starta_position += add_position_temp  # 更新持仓量
+                trade_executed_1 = True
+                logger.info(f"保价强追2 {trade_executed_2}，交易完成，更新持仓量：{starta_position}；动态追加1更新 {trade_executed_1}")
+            else:
+                logger.info(f"保价强追2 {trade_executed_2}，触发状态 {start_price_reached_2}：保本价格 {breakeven_price_2}")
+        if not trade_executed_3 and starta_position != add_position:
+            logger.info(f"动态追平3 {trade_executed_3}，触发状态 {start_price_reached_3}：最佳价格 {optimal_price_3}")
+            profit_position_temp = profit_position
+            start_price_reached_3, trade_executed_3, optimal_price_3, profit_position = dynamic_tracking(
+                symbol, add_direction, add_rate, optimal_price_3, profit_position,
+                start_price_reached=start_price_reached_3, trade_executed=trade_executed_3)
+            if profit_position_temp != profit_position:
+                starta_position = add_position
+                optimal_price_3 = 0
+                trade_executed_4 = True
+                starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
+                logger.info(f"动态追平3 {trade_executed_3}，交易完成，更新持仓量 {starta_position}，启动价格 {starta_price}；保价强平4更新 {trade_executed_4}")
+            else:
+                logger.info(f"动态追平3 {trade_executed_3}，触发状态 {start_price_reached_3}：最佳价格 {optimal_price_3}")
+        if not trade_executed_4 and starta_position != add_position:
+            logger.info(f"保价强平4 {trade_executed_4}，触发状态 {start_price_reached_4}：保本价格 {breakeven_price_4}")
+            profit_position_temp = profit_position
+            start_price_reached_4, trade_executed_4, profit_position = breakeven_stop_profit(
+                symbol, add_direction, breakeven_price_4, profit_position,
+                start_price_reached=start_price_reached_4, trade_executed=trade_executed_4)
+            if profit_position_temp != profit_position:
+                starta_position = add_position
+                optimal_price_3 = 0
+                trade_executed_3 = True
+                starta_price = round(starta_cost * (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
+                logger.info(f"动态追平3 {trade_executed_3}，交易完成，更新持仓量 {starta_position}，启动价格 {starta_price}；保价强平4更新 {trade_executed_4}")
+            else:
+                logger.info(f"保价强平4 {trade_executed_4}，触发状态 {start_price_reached_4}：保本价格 {breakeven_price_4}")
+        status_manager.update_status('trade_executed_1', trade_executed_1)
+        status_manager.update_status('trade_executed_2', trade_executed_2)
+        status_manager.update_status('trade_executed_3', trade_executed_3)
+        status_manager.update_status('trade_executed_4', trade_executed_4)
+        status_manager.update_status('start_price_reached_1', start_price_reached_1)
+        status_manager.update_status('start_price_reached_2', start_price_reached_2)
+        status_manager.update_status('start_price_reached_3', start_price_reached_3)
+        status_manager.update_status('start_price_reached_4', start_price_reached_4)
+        status_manager.update_status('add_position_1', add_position_1)
+        status_manager.update_status('optimal_price_1', optimal_price_1)
+        status_manager.update_status('optimal_price_3', optimal_price_3)
+        status_manager.update_status('breakeven_price_2', breakeven_price_2)
+        status_manager.update_status('breakeven_price_4', breakeven_price_4)
+        status_manager.update_status('starta_price', starta_price)
+        status_manager.update_status('starta_cost', starta_cost)
+        status_manager.update_status('starta_position', starta_position)
+        status_manager.update_status('trigger_price', trigger_price)
+        status_manager.update_status('profit_price', profit_price)
+        logger.info(f"-暂停对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
+        logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
+        logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
+    except Exception as e:
+        logger.error(f"执行 trading_strategy 时发生错误: {e}")
+        traceback.print_exc()
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+
+
+# =============================================================================
+# 配置加载、定时任务与主循环
+# =============================================================================
+
+def switch_config():
+    global current_config
+    return 'b' if current_config == 'a' else 'a'
+
+def get_config_file():
+    return f'config_{current_config}.txt'
+
+def get_alternate_config_file():
+    alternate = switch_config()
+    status_manager.update_status('current_config', alternate)
+    return f'config_{alternate}.txt'
 
 # 下单交易
 def place_limit_order(symbol, position, price, quantitya, callback=0.4):
@@ -2765,7 +3002,7 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
       order_params = create_standard_order_params(order_side, position_side,
                                                   price, origQty)
       try:
-        update_order_status(order_params, position)
+        update_order_status(order_params)
         logger.info(f"止损单限制，转为市价建仓方式下单")
         return order_params
       except Exception as e:
@@ -2786,792 +3023,239 @@ def place_limit_order(symbol, position, price, quantitya, callback=0.4):
     logger.info(f"暂停5,12s")
     time.sleep(12)
 
-
-# 查询订单
-def query_order(order_id):
-  try:
-    response = client.query_order(symbol=symbol,
-                                  orderId=order_id,
-                                  recvWindow=5000)
-    logger.info(response)
-  except ClientError as error:
-    logger.info(f"w2: {error}")
-    logger.error(
-      f"查询订单时出错。状态: {error.status_code}, 错误码: {error.error_code}, 错误消息: {error.error_message}"
-    )
-  except Exception as e:
-    logger.error(f"查询订单时发生未预期的错误: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-
-
-def handle_client_error(error, current_price, order_params):
-  error_messages = {-1021: "时间同步问题", 400: "请求过多或订单超时", -1003: "请求过多或订单超时"}
-  logger.info(f"w3: {error}")
-  logger.error(
-    f"下单时出错。状态: {error.status_code}, 错误码: {error.error_code}, 错误消息: {error.error_message}, 最新价格：{current_price}, 下单参数: {order_params}"
-  )
-
-  error_message = error_messages.get(error.error_code, "未知错误")
-  logger.error(f"发生错误: {error_message}")
-
-  if error.error_code in [-1021, 400, -1003]:
-    logger.info(f"暂停6,{ltime}")
-    time.sleep(ltime)
-  else:
-    logger.info(f"暂停7,{12}")
-    time.sleep(12)
-
-
-# 动态追踪trade_direction=lb买入
-def dynamic_tracking(symbol,
-                     trade_direction,
-                     callback_rate,
-                     optimal_price,
-                     trade_quantity,
-                     start_order_price=None,
-                     start_price_reached=False,
-                     trade_executed=False):
-  global current_price, add_position_1
-  try:
-    logger.info(f"****** 动态追{trade_direction} ******")
-    logger.info(
-      f"触发{start_order_price}:{start_price_reached}成交{trade_executed}回调率{round(callback_rate, dpp)}最佳{optimal_price}量{trade_quantity}"
-    )
-    # 参数校验
-    if trade_direction not in ['lb', 'ss']:
-      raise ValueError(f"交易方向{trade_direction}必须是 'lb' 或 'ss'")
-    if not all(
-        isinstance(x, (int, float)) and x > 0
-        for x in [callback_rate, optimal_price, trade_quantity]):
-      raise ValueError(
-        f"回调率{round(callback_rate, dpp)}、最佳价格{optimal_price}和交易数量{trade_quantity}必须是正数"
-      )
-    if start_order_price is not None and not isinstance(
-        start_order_price, (int, float)):
-      raise ValueError(f"启动价格{start_order_price}必须是数字")
-    if trade_executed == True:
-      raise ValueError("交易已执行，请勿重复执行")
-  # 获取当前市场价格
-    current_price, last_price_update_time = get_current_price(symbol)
-
-    # 检查当前价格是否达到或超过启动价格
-    if start_order_price == None and start_price_reached == False:
-      start_order_price = round(
-        optimal_price *
-        (1 - add_rate if trade_direction == 'lb' else 1 + add_rate), dpp)
-      logger.info(
-        f"启动价为None并未触发则用最佳价格的{round(add_rate,dpp)}：{start_order_price}")
-
-    if (trade_direction == 'lb' and start_order_price != None and current_price <= start_order_price) or \
-  (trade_direction == 'ss' and start_order_price != None and current_price >= start_order_price):
-      start_price_reached = True
-      logger.info(f"触发启动价格：{start_order_price}")
-    if start_price_reached:
-      # 计算价格变化
-      price_change = abs(current_price - optimal_price) / optimal_price
-
-      # 检查是否达到回调率阈值
-      if price_change >= callback_rate:
-        if trade_direction == 'lb' and current_price > optimal_price:
-          # 价格下跌到达回调率，执行买入操作
-          logger.info(f"上涨达回调率买入")
-          if place_limit_order(symbol, trade_direction, 'QUEUE_5',
-                               trade_quantity, callback):  #current_price
-            trade_executed = True
-            start_price_reached = False
-        #    optimal_price = 0
-            trade_quantity = 0
-        elif trade_direction == 'ss' and current_price < optimal_price:
-          # 价格上涨到达回调率，执行卖出操作
-          logger.info(f"下跌达回调率卖出")
-          if place_limit_order(symbol, trade_direction, 'QUEUE_5',
-                               trade_quantity, callback):
-            trade_executed = True
-            start_price_reached = False
-        #    optimal_price = 0
-            trade_quantity = 0
-        else:
-          logger.error("无效的交易方向")
-      status_manager.update_status('add_position_1', add_position_1)
-      # 如果当前价格更有利，则更新 optimal_price
-      if (trade_direction == 'lb' and current_price < optimal_price) or \
-         (trade_direction == 'ss' and current_price > optimal_price):
-        optimal_price = current_price
-        logger.info(f"更新最佳价格：{optimal_price}")
-    return start_price_reached, trade_executed, optimal_price, trade_quantity
-  except ValueError as e:
-    logger.error(f"参数非法: {e}")
-    return start_price_reached, trade_executed, optimal_price, trade_quantity
-  except Exception as e:
-    logger.error(f"执行动态追踪时发生错误: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-    return False, True, optimal_price, trade_quantity
-
-
-# 保本止盈trade_direction=lb买入
-def breakeven_stop_profit(symbol,
-                          trade_direction,
-                          breakeven_price,
-                          trade_quantity,
-                          start_order_price=None,
-                          start_price_reached=False,
-                          trade_executed=False):
-  global current_price
-  try:
-    logger.info(f"执行保本止盈{trade_direction}")
-    logger.info(
-      f"触发{start_price_reached}:{start_order_price}成交{trade_executed}保本{breakeven_price}量{trade_quantity}"
-    )
-    # 参数校验
-    if trade_direction not in ['lb', 'ss']:
-      raise ValueError(f"交易方向{trade_direction}必须是 'lb' 或 'ss'")
-    if breakeven_price <= 0 or trade_quantity <= 0:
-      raise ValueError(f"保本价格{breakeven_price}和交易数量{trade_quantity}必须是大于0的正数")
-
-    if start_order_price is not None and start_order_price <= 0:
-      raise ValueError(f"启动价格{start_order_price}必须是大于0的正数")
-
-    if trade_quantity < min_quantity:
-      raise ValueError(f"交易数量{trade_quantity}必须大于等于最小下单量 (min_quantity)")
-
-    #logger.info(f"类型 - trade_quantity: {type(trade_quantity)}, 值 - trade_quantity: {trade_quantity}")
-    decimal_places = 3
-    trade_quantity_float = float(trade_quantity)
-    step_size_float = float(step_size)
-    adjusted_quantity = round(trade_quantity_float / step_size_float,
-                              decimal_places)
-    if not adjusted_quantity.is_integer():
-      raise ValueError(f"交易数量{trade_quantity}必须是最小调整步长{step_size}的整数倍")
-
-    if trade_executed == True:
-      raise ValueError("交易已执行，请勿重复执行")
-    # 获取当前市场价格
-    current_price, last_price_update_time = get_current_price(symbol)
-
-    # 检查当前价格是否达到或超过启动价格
-    if start_order_price is not None:
-      if not isinstance(start_order_price, (int, float)):
-        raise ValueError("启动价格必须是数字")
-      start_price_reached = (trade_direction == 'lb' and current_price <= start_order_price) or \
-                            (trade_direction == 'ss' and current_price >= start_order_price)
-    else:
-      start_price_reached = True
-    if start_price_reached:
-      logger.info(f"触发启动价格：{start_order_price}")
-      if (trade_direction == 'lb' and current_price >= breakeven_price) or \
-       (trade_direction == 'ss' and current_price <= breakeven_price):
-        # 执行止盈操作
-        logger.info(f"达到保本价，执行{trade_direction}操作. 价格: {current_price}")
-        if place_limit_order(symbol, trade_direction, 'QUEUE_5', trade_quantity,
-                             callback):
-          trade_executed = True
-          start_price_reached = False
-          trade_quantity = 0
-      else:
-        logger.info("当前价格未达到保本止盈点")
-    return start_price_reached, trade_executed, trade_quantity
-  except ValueError as e:
-    logger.error(f"参数错误: {e}")
-    return start_price_reached, trade_executed, trade_quantity
-  except Exception as e:
-    logger.error(f"执行保本止盈时发生错误: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-    return False, True, trade_quantity
-
-
-def trading_strategy():
-  # starta_cost启动成本咱改为从current_status获取
-  global starta_price, starta_position, starta_cost, trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4, add_position_1, add_position
-  logger.info(f"******** {starta_direction}对冲中 ********")
-  try:
-    if trading_strategy_enabled == 0:
-      logger.info("交易策略未启用")
-      return
-    if add_position_rate > 0 and add_position != max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price)):
-      add_position = max(math.ceil(add_position_rate * 0.01 * ((long_position - short_position) if starta_direction == "lb" else (short_position - long_position))), math.ceil(max(5.1, add_position_u) / current_price))
-      logger.info(f"当前{round(add_position_rate * 0.01, 3)}更新单位对冲量：{add_position}")
-      status_manager.update_status('add_position', add_position)
-    if add_position_rate <= 0 and add_position != math.ceil(add_position_u / current_price):
-      if add_position_u >= 5:
-        add_position = math.ceil(add_position_u / current_price)
-        logger.info(f"更新单位对冲量：{add_position}")
-        status_manager.update_status('add_position', add_position)
-    logger.info(f"启动仓位：{starta_position}")
-    if starta_position == 0:
-      logger.info("未开仓,初始化对冲")
-      trade_executed_1, start_price_reached_1, optimal_price_1, trade_executed_2, start_price_reached_2, breakeven_price_2, trade_executed_3, start_price_reached_3, optimal_price_3, trade_executed_4, start_price_reached_4, breakeven_price_4 = True, False, 0, True, False, 0, True, False, 0, True, False, 0
-      starta_price = current_price
-      trigger_price = starta_price
-      starta_cost = starta_price if long_position == short_position == 0 else (long_cost if long_position >= short_position else short_cost)
-      add_position_1 = 0
-      logger.info(f"触发价格1：{trigger_price}")
-      starta_position = add_position if add_position > 0 else 1
-
-    trigger_price = round(
-      (min(
-        starta_price if starta_cost == 0 or starta_cost is None else
-        starta_cost, starta_price) if starta_direction == 'lb' else max(
-          starta_cost, starta_price)) *
-      (1 - add_rate if starta_direction == 'lb' else 1 + add_rate), dpp)
-    logger.info(f"触发价格2：{trigger_price}")
-    profit_price = round(
-      starta_cost *
-      (1 - add_rate if starta_direction == 'ss' else 1 + add_rate), dpp)
-    if starta_price == 0:
-      starta_price, last_price_update_time = get_current_price(symbol)
-      logger.info(f"启动价格调整为当前价格：{starta_price}")
-    if starta_cost == 0 or starta_cost < starta_price and starta_direction == 'lb' or starta_cost > starta_price and starta_direction == 'ss':
-      starta_cost = starta_price
-      logger.info(f"启动成本调整为启动价格：{starta_cost}")
-    logger.info(
-      f"-开始{starta_direction}对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
-    logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
-    logger.info(f"-追加幅度：{round(add_rate,dpp)}, 单位追加量：{add_position}")
-    logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
-    # 执行交易策略的核心逻辑
-    conditions_enabled = {
-      'ssbb_logic': ssbb_logic_enabled,
-      'price_change': price_change_enabled,
-      'cost_price_logic': cost_price_logic_enabled,
-      'technical_indicators': technical_indicators_enabled,
-      'macd_signal': macd_signal_enabled
-    }
-    score = calculate_score(conditions_enabled)
-    add_direction = 'lb' if starta_direction == 'ss' else 'ss'
-
-    if not trade_executed_1 and add_position_1 != 0:
-      logger.info(
-        f"动态追加1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}"
-      )
-      add_position_temp = add_position_1
-      start_price_reached_1, trade_executed_1, optimal_price_1,  add_position_1 = dynamic_tracking(
-        symbol,
-        starta_direction,
-        add_rate,
-        optimal_price_1,
-        add_position_1,
-        start_price_reached=start_price_reached_1,
-        trade_executed=trade_executed_1)
-      if add_position_temp != add_position_1:
-        starta_position += add_position_temp  # 更新持仓量
-        trade_executed_2 = True
-        logger.info(f"动态追加1{trade_executed_1}，交易完成,更新持仓量：{starta_position}保价强追2改{trade_executed_2}")
-      logger.info(
-        f"动态追加1{trade_executed_1}，触发状态{start_price_reached_1}：最佳价格{optimal_price_1}"
-      )
-    if not trade_executed_2 and breakeven_price_2 != 0:
-      logger.info(
-        f"保价强追2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}"
-      )
-      add_position_temp = add_position_1
-      start_price_reached_2, trade_executed_2, add_position_1 = breakeven_stop_profit(
-        symbol,
-        starta_direction,
-        breakeven_price_2,
-        add_position_1,
-        start_price_reached=start_price_reached_2,
-        trade_executed=trade_executed_2)
-      if add_position_temp != add_position_1:
-        starta_position += add_position_temp  # 更新持仓量
-        trade_executed_1 = True
-        logger.info(f"保价强追2{trade_executed_2},交易完成,更新持仓量：{starta_position},动态追加1改{trade_executed_1}")
-      else:
-        logger.info(f"保价强追2{trade_executed_2}，触发状态{start_price_reached_2}：保本价格{breakeven_price_2}")
-    if not trade_executed_3 and starta_position != add_position:
-      logger.info(
-        f"动态追平3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}"
-      )
-      profit_position_temp = profit_position
-      start_price_reached_3, trade_executed_3, optimal_price_3, profit_position = dynamic_tracking(
-        symbol,
-        add_direction,
-        add_rate,
-        optimal_price_3,
-        profit_position,
-        start_price_reached=start_price_reached_3,
-        trade_executed=trade_executed_3)
-      if profit_position_temp != profit_position:
-        starta_position = add_position
-        optimal_price_3 = 0
-        trade_executed_4 = True
-        starta_price = round(
-          starta_cost *
-          (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
-        logger.info(f"动态追平3{trade_executed_3},交易完成,更新持仓量{starta_position}启动价格{starta_price},保价强平4改{trade_executed_4}")
-      else:
-        logger.info(f"动态追平3{trade_executed_3}，触发状态{start_price_reached_3}：最佳价格{optimal_price_3}")
-    if not trade_executed_4 and starta_position != add_position:
-      logger.info(
-        f"保价强平4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}"
-      )
-      profit_position_temp = profit_position
-      start_price_reached_4, trade_executed_4, profit_position = breakeven_stop_profit(
-        symbol,
-        add_direction,
-        breakeven_price_4,
-        profit_position,
-        start_price_reached=start_price_reached_4,
-        trade_executed=trade_executed_4)
-      if profit_position_temp != profit_position:
-        starta_position = add_position
-        optimal_price_3 = 0
-        trade_executed_3 = True
-        starta_price = round(
-          starta_cost *
-          (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
-        logger.info(f"动态追平3{trade_executed_3},交易完成,更新持仓量{starta_position}启动价格{starta_price},保价强平4改{trade_executed_4}")
-      else:
-        logger.info(f"保价强平4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
-
-    # 价格到达触发点
-    if (current_price < trigger_price
-        and starta_direction == 'lb') or (current_price > trigger_price
-                                          and starta_direction == 'ss'):
-      #logger.info(f"Types: starta_position: {type(starta_position)}, starta_cost: {type(starta_cost)}, trigger_price: {type(trigger_price)}, add_position: {type(add_position)}")
-
-      starta_cost = round(
-        ((starta_position * starta_cost + trigger_price * add_position) /
-         (starta_position + add_position)), dpp)  # 更新启动成本
-      starta_price = current_price  # 更新启动价格
-      add_position_1 += add_position  # 更新交易量
-      logger.info(
-        f"更新启动价格：{starta_price}, 启动成本：{starta_cost}, 追加量：{add_position_1}")
-      if (starta_direction == 'lb' and score >= ts_threshold) or \
-       (starta_direction == 'ss' and score <= ts_threshold):
-        logger.info(f"触发{starta_direction}对冲加仓")
-        if place_limit_order(symbol, starta_direction, 'QUEUE_5', add_position_1,
-                             callback):
-          trade_executed_1 = True
-          trade_executed_2 = True
-          profit_price = round(
-            starta_cost *
-            (1 - add_rate if starta_direction == 'ss' else 1 + add_rate),
-            dpp)  # 更新止盈价格
-          starta_position += add_position_1  # 更新持仓量
-          add_position_1 = 0
-          logger.info(f"成功对冲下单1：{trigger_price}, 止盈价格：{profit_price}")
-      else:
-        breakeven_price_2 = trigger_price  # 更新保本价格
-        if optimal_price_1 == 0 or \
-         (starta_direction == 'lb' and current_price < optimal_price_1) or \
-         (starta_direction == 'ss' and current_price > optimal_price_1):
-          optimal_price_1 = current_price  # 更新最佳价格
-          logger.info(f"更新最佳价格1：{optimal_price_1}")
-        start_price_reached_1 = False
-        start_price_reached_2 = False
-        trade_executed_1 = False
-        trade_executed_2 = False
-        add_position_temp = add_position_1
-        start_price_reached_1, trade_executed_1, optimal_price_1, add_position_1 = dynamic_tracking(
-          symbol,
-          starta_direction,
-          add_rate,
-          optimal_price_1,
-          add_position_1,
-          start_order_price=trigger_price,
-          start_price_reached=start_price_reached_1,
-          trade_executed=trade_executed_1)
-        if add_position_temp != add_position_1:
-          trade_executed_2 = True
-          profit_price = round(
-            starta_cost *
-            (1 - add_rate if starta_direction == 'ss' else 1 + add_rate),
-            dpp)  # 更新止盈价格
-          starta_position += add_position_temp  # 更新持仓量
-          logger.info(f"动态追加1成功对冲下单：{trigger_price}, 止盈价格：{profit_price}")
-        else:
-          logger.info(f"新对冲单，动态追踪最佳价格{optimal_price_1}，回调率 {round(add_rate, dpp)}")
-          add_position_temp = add_position_1
-          start_price_reached_2, trade_executed_2, add_position_1 = breakeven_stop_profit(
-            symbol,
-            starta_direction,
-            breakeven_price_2,
-            add_position_1,
-            start_order_price=trigger_price,
-            start_price_reached=start_price_reached_2,
-            trade_executed=trade_executed_2)
-          if add_position_temp != add_position_1:
-            trade_executed_1 = True
-            profit_price = round(
-              starta_cost *
-              (1 - add_rate if starta_direction == 'ss' else 1 + add_rate),
-              dpp)  # 更新止盈价格
-            starta_position += add_position_temp  # 更新持仓量
-            logger.info(f"保本止盈2成功对冲下单：{trigger_price}, 止盈价格：{profit_price}")
-          else:
-            logger.info(f"新对冲单，保本止盈保本价{breakeven_price_2}")
-      logger.info(
-        f"新订单已放置在 {trigger_price}，仓位更新为 {starta_position}，平均成本更新为 {starta_cost}，止盈价格更新为 {profit_price}"
-      )
-      trigger_price = round(
-        starta_price *
-        (1 - add_rate if starta_direction == 'lb' else 1 + add_rate),
-        dpp)  # 更新追加价格
-      logger.info(f"触发价格：{trigger_price}")
-      logger.info(f"更新追加价格：{trigger_price}")  #最好确保成交后再更新止盈价格
-
-    # 检查是否达到止盈点
-    if (starta_position != 0 and starta_direction == 'lb'
-        and current_price > profit_price) or (starta_position != 0
-                                              and starta_direction == 'ss' and
-                                              current_price < profit_price):
-      profit_position = max(starta_position - add_position, 0)  # 止盈量
-      if (starta_direction == 'lb' and score <= -ts_threshold) or \
-       (starta_direction == 'ss' and score >= ts_threshold):
-        logger.info(f"触发{starta_direction}对冲止盈")
-        if profit_position > 0 and place_limit_order(
-            symbol, add_direction, 'QUEUE_5', profit_position, callback):
-          starta_position = add_position
-          trade_executed_3 = True
-          trade_executed_4 = True
-          logger.info("达到止盈点，评分下单平仓...")
-      else:
-        if optimal_price_3 == 0 or \
-         (add_direction == 'lb' and current_price > optimal_price_3) or \
-         (add_direction == 'ss' and current_price < optimal_price_3):
-          optimal_price_3 = current_price
-          logger.info(f"更新最佳价格3：{optimal_price_3}")
-        breakeven_price_4 = current_price
-        start_price_reached_3 = False
-        start_price_reached_4 = False
-        profit_position_temp = profit_position
-        start_price_reached_3, trade_executed_3, optimal_price_3, profit_position = dynamic_tracking(
-          symbol,
-          add_direction,
-          add_rate,
-          optimal_price_3,
-          profit_position,
-          start_order_price=profit_price,
-          start_price_reached=start_price_reached_3,
-          trade_executed=trade_executed_3)
-        if profit_position_temp != profit_position:
-          starta_position = add_position
-          optimal_price_3 = 0
-          trade_executed_4 = True
-          starta_price = round(
-            starta_cost *
-            (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
-          logger.info(f"动态追平3{trade_executed_3},交易完成,更新持仓量{starta_position}启动价格{starta_price},保价强平4改{trade_executed_4}")
-        else:
-          profit_position_temp = profit_position
-          start_price_reached_4, trade_executed_4, profit_position = breakeven_stop_profit(
-            symbol,
-            add_direction,
-            breakeven_price_4,
-            profit_position,
-            start_order_price=profit_price,
-            start_price_reached=start_price_reached_4,
-            trade_executed=trade_executed_4)
-          if profit_position_temp != profit_position:
-            starta_position = add_position
-            optimal_price_3 = 0
-            trade_executed_3 = True
-            starta_price = round(
-              starta_cost *
-              (1 - add_rate / 2 if starta_direction == 'ss' else 1 + add_rate), dpp)
-            logger.info(f"动态追平3{trade_executed_3},交易完成,更新持仓量{starta_position}启动价格{starta_price},保价强平4改{trade_executed_4}")
-          else:
-            logger.info(f"达到止盈点，保价强平4{trade_executed_4}，触发状态{start_price_reached_4}：保本价格{breakeven_price_4}")
-
-    status_manager.update_status('trade_executed_1', trade_executed_1)
-    status_manager.update_status('trade_executed_2', trade_executed_2)
-    status_manager.update_status('trade_executed_3', trade_executed_3)
-    status_manager.update_status('trade_executed_4', trade_executed_4)
-    status_manager.update_status('start_price_reached_1',
-                                 start_price_reached_1)
-    status_manager.update_status('start_price_reached_2',
-                                 start_price_reached_2)
-    status_manager.update_status('start_price_reached_3',
-                                 start_price_reached_3)
-    status_manager.update_status('start_price_reached_4',
-                                 start_price_reached_4)
-    status_manager.update_status('add_position_1', add_position_1)
-    status_manager.update_status('optimal_price_1', optimal_price_1)
-    status_manager.update_status('optimal_price_3', optimal_price_3)
-    status_manager.update_status('breakeven_price_2', breakeven_price_2)
-    status_manager.update_status('breakeven_price_4', breakeven_price_4)
-    status_manager.update_status('starta_price', starta_price)
-    status_manager.update_status('starta_cost', starta_cost)
-    status_manager.update_status('starta_position', starta_position)
-    status_manager.update_status('trigger_price', trigger_price)
-    status_manager.update_status('profit_price', profit_price)
-
-    logger.info(f"-暂停对冲策略，当前价格：{current_price}, 启动价格：{starta_price}")
-    logger.info(f"-启动仓位：{starta_position}, 启动成本：{starta_cost}")
-    logger.info(f"-追加价格：{trigger_price}, 待交易量：{add_position_1}, 止盈价格：{profit_price}")
-  except Exception as e:
-    logger.error(f"执行trading_strategy时发生错误: {e}")
-    traceback.print_exc()
-# 记录完整的堆栈跟踪
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-
-
-#调用本地函数
-def switch_config():
-  global current_config
-  return 'b' if current_config == 'a' else 'a'
-
-
-def get_config_file():
-  return f'config_{current_config}.txt'
-
-
-def get_alternate_config_file():
-  alternate = switch_config()
-  status_manager.update_status('current_config', alternate)
-  return f'config_{alternate}.txt'
-
-
 def execute_config_file(config_file_path):
-  config_file = build_file_path(config_file_path)
-  try:
-    logger.info(f"加载配置{current_config}...")
-    with open(config_file, 'r', encoding='utf-8') as file:
-      script = file.read()
-      exec(script, globals())
-  except FileNotFoundError:
-    logger.error(f"{config_file} 文件未找到。")
-  except SyntaxError as e:
-    logger.error(f"{config_file}中的语法错误: {e}")
-  except Exception as e:
-    logger.error(f"读取{config_file}时发生错误: {e}")
-    traceback.print_exc()
-# 记录完整的堆栈跟踪
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-
+    """
+    执行指定配置文件中的 Python 脚本。
+    参数：
+      config_file_path：配置文件路径（相对于 BASE_PATH）。
+    """
+    config_file = build_file_path(config_file_path)
+    try:
+        logger.info(f"加载配置 {current_config} ...")
+        with open(config_file, 'r', encoding='utf-8') as file:
+            script = file.read()
+            exec(script, globals())
+    except FileNotFoundError:
+        logger.error(f"{config_file} 文件未找到。")
+    except SyntaxError as e:
+        logger.error(f"{config_file} 中存在语法错误: {e}")
+    except Exception as e:
+        logger.error(f"读取 {config_file} 时发生错误: {e}")
+        traceback.print_exc()
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 async def fetch_and_update_config():
-  global current_config, last_config_update_time
-  try:
-    # 加载配置和令牌
-    config = load_config()
-    token = config['github_api_key']
-    repo = 'kongji1/go'  # 替换为实际的仓库名称
-    file_path = 'go.txt'  # 替换为实际的文件路径
-
-    # 构建API请求
-    api_url = f'https://api.github.com/repos/{repo}/commits?path={file_path}'
-    headers = {'Authorization': f'token {token}'}
-
-    # 发送请求并解析响应
-    response = requests.get(api_url, headers=headers)
-    response.raise_for_status()
-    commits = response.json()
-
-    if commits:
-      last_commit = commits[0]
-      last_modified_time_str = last_commit['commit']['committer']['date']
-
-      if last_modified_time_str.endswith('Z'):
-        last_modified_time_str = last_modified_time_str[:-1]
-      last_modified_time = datetime.fromisoformat(last_modified_time_str)
-
-      # 比较最新提交时间和本地记录的最后更新时间
-      if last_config_update_time is None or last_modified_time > last_config_update_time:
-        # 更新 last_config_update_time 并继续更新操作
-        last_config_update_time = current_time
-        last_config_update_time_str = last_config_update_time.isoformat()
-        alternate_config_path = get_alternate_config_file()
-        alternate_config = build_file_path(alternate_config_path)
-        # 从raw URL下载go.txt
-        raw_response = requests.get(
-          'https://raw.githubusercontent.com/kongji1/go/main/go.txt')
-        raw_response.raise_for_status()
-        with open(alternate_config, 'w', encoding='utf-8') as file:
-          file.write(raw_response.text)
-        status_manager.update_status('last_config_update_time',
-                                     last_config_update_time_str)
-        logger.info(f"{alternate_config}已成功更新。尝试执行新配置。")
-        execute_config_file(alternate_config)
-        current_config = switch_config()
-        logger.info(f"现在使用配置文件: {get_config_file()}")
-      else:
-        logger.info("文件未更新，无需执行操作。")
-    else:
-      #logger.info(f"{response.content}")
-      logger.error("未能找到更新时间标签。")
-  except Exception as e:
-    logger.error(f"更新或执行加载配置时出错: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-
+    """
+    异步从GitHub获取配置文件最新提交时间，如检测更新则下载最新配置并执行。
+    """
+    global current_config, last_config_update_time
+    try:
+        config = load_config()
+        token = config['github_api_key']
+        repo = 'kongji1/go'
+        file_path = 'go.txt'
+        api_url = f'https://api.github.com/repos/{repo}/commits?path={file_path}'
+        headers = {'Authorization': f'token {token}'}
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
+        commits = response.json()
+        if commits:
+            last_commit = commits[0]
+            last_modified_time_str = last_commit['commit']['committer']['date']
+            if last_modified_time_str.endswith('Z'):
+                last_modified_time_str = last_modified_time_str[:-1]
+            last_modified_time = datetime.fromisoformat(last_modified_time_str)
+            if last_config_update_time is None or last_modified_time > last_config_update_time:
+                last_config_update_time = current_time
+                last_config_update_time_str = last_config_update_time.isoformat()
+                alternate_config_path = get_alternate_config_file()
+                alternate_config = build_file_path(alternate_config_path)
+                raw_response = requests.get('https://raw.githubusercontent.com/kongji1/go/main/go.txt')
+                raw_response.raise_for_status()
+                with open(alternate_config, 'w', encoding='utf-8') as file:
+                    file.write(raw_response.text)
+                status_manager.update_status('last_config_update_time', last_config_update_time_str)
+                logger.info(f"{alternate_config} 已成功更新。尝试执行新配置。")
+                execute_config_file(alternate_config)
+                current_config = switch_config()
+                logger.info(f"现在使用配置文件: {get_config_file()}")
+            else:
+                logger.info("文件未更新，无需执行操作。")
+        else:
+            logger.error("未能找到更新时间标签。")
+    except Exception as e:
+        logger.error(f"更新或执行加载配置时出错: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 async def schedule_config_updates():
-  while True:
-    fetch_and_update_config()
-    logger.info(f"暂停8,14400")
-    await asyncio.sleep(14400)  # 等待4小时
-
+    while True:
+        fetch_and_update_config()
+        logger.info(f"暂停8, 14400")
+        await asyncio.sleep(14400)
 
 def get_max_limit():
-  try:
-    max_limit = max(len(kline_data_cache.get(interval_5m, [])),
-                    len(kline_data_cache.get(interval_ssbb_3m, [])), limit,
-                    limit_test)
-    logger.info(f"最大 limit calculated: {max_limit}")
-    return max_limit
-  except Exception as e:
-    logger.info(f"get_max_limit出错: {e}")
-    logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-
+    try:
+        max_limit = max(len(kline_data_cache.get(interval_5m, [])),
+                        len(kline_data_cache.get(interval_ssbb_3m, [])),
+                        limit, limit_test)
+        logger.info(f"最大 limit calculated: {max_limit}")
+        return max_limit
+    except Exception as e:
+        logger.info(f"get_max_limit 出错: {e}")
+        logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
 
 async def run_periodic_tasks():
-  global last_config_update_time, current_time, mfi_trigger_low_5m, mfi_trigger_high_5m
-  last_config_update_time = price_to_datetime(last_config_update_time_str)
-  while True:
-    try:
-      current_time = datetime.now()
-      if current_time.minute % 2 == 1:
-        await fetch_and_update_config()
-      if current_time.hour == 0 and current_time.minute == 2:
-        # 在执行任务前，重新加载数据
-        max_limit = get_max_limit()
-        await cache_kline_data(symbol, [interval_5m, interval_ssbb_3m], max_limit)
+    global last_config_update_time, current_time, mfi_trigger_low_5m, mfi_trigger_high_5m
+    last_config_update_time = price_to_datetime(last_config_update_time_str)
+    while True:
+        try:
+            current_time = datetime.now()
+            if current_time.minute % 2 == 1:
+                await fetch_and_update_config()
+            if current_time.hour == 0 and current_time.minute == 2:
+                max_limit = get_max_limit()
+                await cache_kline_data(symbol, [interval_5m, interval_ssbb_3m], max_limit)
+                logger.info("异步开始执行技术指标回测任务")
+                rsi_trigger_low_5m, rsi_trigger_high_5m, _ = await rsibest(interval_5m)
+                status_manager.update_status('rsi_trigger_low_5m', rsi_trigger_low_5m)
+                status_manager.update_status('rsi_trigger_high_5m', rsi_trigger_high_5m)
+                mfi_trigger_low_5m, mfi_trigger_high_5m, _ = await mfibest(interval_5m)
+                logger.info(f"更新后的 MFI 触发点: {mfi_trigger_low_5m}/{mfi_trigger_high_5m}")
+                status_manager.update_status('mfi_trigger_low_5m', mfi_trigger_low_5m)
+                status_manager.update_status('mfi_trigger_high_5m', mfi_trigger_high_5m)
+                so_trigger_low_5m, so_trigger_high_5m, _ = await sobest(interval_5m)
+                status_manager.update_status('so_trigger_low_5m', so_trigger_low_5m)
+                status_manager.update_status('so_trigger_high_5m', so_trigger_high_5m)
+        except Exception as e:
+            logger.error(f"在运行周期性任务时出现错误: {e}")
+            traceback.print_exc()
+            logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+        finally:
+            logger.info(f"暂停8, {60}")
+            await asyncio.sleep(60)
 
-        # 创建并执行任务
-        logger.info(f"异步开始")
-        
-        rsi_trigger_low_5m, rsi_trigger_high_5m, _ = await rsibest(interval_5m)
-        status_manager.update_status('rsi_trigger_low_5m', rsi_trigger_low_5m)
-        status_manager.update_status('rsi_trigger_high_5m', rsi_trigger_high_5m)
-        
-        mfi_trigger_low_5m, mfi_trigger_high_5m, _ = await mfibest(interval_5m)
-        logger.info(f"更21新{mfi_trigger_low_5m}/{mfi_trigger_high_5m}")
-        status_manager.update_status('mfi_trigger_low_5m', mfi_trigger_low_5m)
-        status_manager.update_status('mfi_trigger_high_5m', mfi_trigger_high_5m)
-        
-        so_trigger_low_5m, so_trigger_high_5m, _ = await sobest(interval_5m)
-        status_manager.update_status('so_trigger_low_5m', so_trigger_low_5m)
-        status_manager.update_status('so_trigger_high_5m', so_trigger_high_5m)
-
-    except Exception as e:
-      logger.error(f"在运行周期性任务时出现错误: {e}")
-      traceback.print_exc()
-      # 记录完整的堆栈跟踪
-      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-    finally:
-      logger.info(f"暂停8,{60}")
-      await asyncio.sleep(60)
-
-
-async def main():
-  task1 = asyncio.create_task(run_periodic_tasks())  # 创建运行定期任务的任务
-  task2 = asyncio.create_task(main_loop())  # 创建主循环任务
-  await asyncio.gather(task1, task2)  # 同时运行任务
-
-
-# 主交易逻辑
 async def main_loop():
-  global intervals, current_price, ssbb, sbsb, last_price_update_time
-  start_time = datetime.now()
-  last_price_update_time = price_to_datetime(last_price_update_time_str)
-  start_price, last_price_update_time = get_current_price(symbol)
-  logger.info(f"开始价格: {start_price}")
+    """
+    主循环：不断更新市场数据、执行配置加载、下单逻辑及持仓更新。
+    """
+    global intervals, current_price, ssbb, sbsb, last_price_update_time
+    start_time = datetime.now()
+    last_price_update_time = price_to_datetime(last_price_update_time_str)
+    start_price, last_price_update_time = get_current_price(symbol)
+    logger.info(f"开始价格: {start_price}")
 
-  intervals = ['3m', '5m']
+    intervals = ['3m', '5m']
+    # 如需更多时间周期，可调整 intervals 列表
+    await cache_kline_data(symbol, intervals, limit_test)
+    fetch_and_update_active_orders(symbol)  # 加载订单记录
+    current_price = start_price
 
- # intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
-  await cache_kline_data(symbol, intervals, limit_test)
-  fetch_and_update_active_orders(symbol)  # 加载订单记录
-  current_price = start_price
-  while True:
-    try:
-      logger.info("\n******* 正在执行主循环 *******")
-      execute_config_file(get_config_file())  # 动态变量加载
-      get_current_time()
-      if current_time - start_time >= timedelta(minutes=max_run_time):
-        logger.info("主循环运行超过最大时长，现在停止。")
-        break
-      await update_kline_data_async(symbol, current_time)
-      current_price, last_price_update_time = get_current_price(symbol)
-      if trading_strategy_enabled == 1:
-         trading_strategy()
-      ssbb, sbsb = calculate_composite_score(current_price, last_order_price,
-                                             last_s_order_price,
-                                             stop_loss_limit,
-                                             take_profit_limit)
-      #  logger.info(f"config后sbsb: {sbsb},ssbb: {ssbb}\n")
-      if sbsb == 1:
-        current_price, last_price_update_time = get_current_price(symbol)
-        order_position = 'lb' if ssbb == 1 else 'ss'
-        order_price, origQty = calculate_next_order_parameters(
-          current_price, leverage, order_position)
-        #      response = place_limit_order(symbol, order_position, order_price, origQty, 100 * Slippage)
-        response = place_limit_order(symbol, order_position, 'QUEUE_5', origQty,
-                                     100 * Slippage)
-        if response:
-          update_order_status(response, order_position)
-          logger.info(f"网格系统下单成功")
-      current_status()
-
-      #beta() #测试代码
-
-      logger.info(f"暂停9,{monitoring_interval}")
-      await asyncio.sleep(monitoring_interval)  # 等待一分钟
-      if current_time.minute % 2 == 1:
-        run_powershell_script('112.ps1')
-      status_manager.update_status('Last_heartbeat_time', current_time)
-    except ClientError as error:
-      logger.error(f"主循环运行时错误: {error}")
-      # 记录完整的堆栈跟踪
-      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-    except Exception as e:
-      logger.error(f"主循环运行时1错误: {e}")
-      traceback.print_exc()
-      # 记录完整的堆栈跟踪
-      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-      logger.info(f"暂停10,{monitoring_interval}")
-      await asyncio.sleep(monitoring_interval)  # 发生错误时等待一分钟
-
+    while True:
+        try:
+            logger.info("\n******* 正在执行25主循环 *******")
+            execute_config_file(get_config_file())  # 动态加载配置
+            get_current_time()
+            if current_time - start_time >= timedelta(minutes=max_run_time):
+                logger.info("主循环运行超过最大时长，现在停止。")
+                break
+            await update_kline_data_async(symbol, current_time)
+            current_price, last_price_update_time = get_current_price(symbol)
+            if trading_strategy_enabled == 1:
+                trading_strategy()
+            ssbb, sbsb = calculate_composite_score(current_price, last_order_price,
+                                                   last_s_order_price,
+                                                   stop_loss_limit,
+                                                   take_profit_limit)
+            # 如需调试，可取消下面代码注释打印详细信息
+            # logger.info(f"配置加载后 sbsb: {sbsb}, ssbb: {ssbb}\n")
+            if sbsb == 1:
+                current_price, last_price_update_time = get_current_price(symbol)
+                order_position = 'lb' if ssbb == 1 else 'ss'
+                order_price, origQty = calculate_next_order_parameters(current_price, leverage, order_position)
+                # 以下两行任选其一（例如使用 'QUEUE_5' 标识下单价格）
+                response = place_limit_order(symbol, order_position, 'QUEUE_5', origQty, 100 * Slippage)
+                if response:
+                    update_order_status(response)
+                    logger.info("网格系统下单成功")
+            current_status()
+            # beta()  # 测试代码（可取消注释用于测试）
+            logger.info(f"暂停9, {monitoring_interval}")
+            await asyncio.sleep(monitoring_interval)  # 暂停一定时间后继续循环
+            if current_time.minute % 2 == 1:
+                run_powershell_script('112.ps1')
+            status_manager.update_status('Last_heartbeat_time', current_time)
+        except ClientError as error:
+            logger.error(f"主循环运行时错误: {error}")
+            logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"主循环运行时发生错误: {e}")
+            traceback.print_exc()
+            logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+            logger.info(f"暂停10, {monitoring_interval}")
+            await asyncio.sleep(monitoring_interval)
 
 def beta():
-  script_path = os.path.join(BASE_PATH, '112.ps1')
-  if not os.path.isfile(script_path):
-    logger.info(f"脚本文件 {script_path} 不存在，开始测试")
-    position = 'lb'
-    price1, _ = get_current_price(symbol)
-    price = (price1 * 0.8) if position == 'lb' else (price1 * 1.2)
-    quantitya = min_quantity
-    callback = 0.1
-    response = client.commission_rate(symbol=symbol)
-    #CKBUSDTRATE = float(response["takerCommissionRate"])
-    print(response)
-    #print(f"{CKBUSDTRATE}")
-  else:
-    logger.info(f"脚本文件 {script_path} 存在，终止测试")
-    return
-  # place_limit_order(symbol, position, price, quantitya, callback)
-  #symbol = 'ETHUSDT'
-  logger.info(f"\n/nbbbbbeeeeettttttaaaaa")
+    """
+    测试函数 beta：检测是否存在指定 PowerShell 脚本文件，不存在则进行测试。
+    """
+    script_path = os.path.join(BASE_PATH, '112.ps1')
+    if not os.path.isfile(script_path):
+        logger.info(f"脚本文件 {script_path} 不存在，开始测试")
+        position = 'lb'
+        price1, _ = get_current_price(symbol)
+        price = (price1 * 0.8) if position == 'lb' else (price1 * 1.2)
+        quantitya = min_quantity
+        callback = 0.1
+        response = client.commission_rate(symbol=symbol)
+        print(response)
+    else:
+        logger.info(f"脚本文件 {script_path} 存在，终止测试")
+        return
+    logger.info("\n/nbbbbbeeeeettttttaaaaa")
 
+# =============================================================================
+# 程序入口及主循环启动
+# =============================================================================
 
 logger = None
 
+async def main():
+    """
+    主入口函数：同时启动周期性任务和主循环任务。
+    """
+    task1 = asyncio.create_task(run_periodic_tasks())  # 创建周期性任务
+    task2 = asyncio.create_task(main_loop())           # 创建主交易循环任务
+    await asyncio.gather(task1, task2)                   # 同时运行两个任务
 
 def run_main_loop():
-  global logger, client
-  while True:
-    try:
-      logger = setup_logging()
-      execute_config_file(get_config_file())
-      config = load_config()
-      client = setup_um_futures_client()
-      get_public_ip_and_latency()
-      asyncio.run(main())
-      logger.info(f"暂停11,{30}")
-      time.sleep(30)
-    except KeyboardInterrupt:
-      logger.info("键盘中断检测到。程序将在60秒后重新启动...")
-      time.sleep(60)
-      os.execv(sys.executable, ['python'] + sys.argv)
-    except Exception as e:
-      logger.error(f"程序运行中发生错误: {e}")
-      traceback.print_exc()
-    # 记录完整的堆栈跟踪
-      logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
-      logger.info(f"暂停12,{30}")
-      time.sleep(30)
-      os.execv(sys.executable, ['python'] + sys.argv)
+    """
+    主程序循环：
+    初始化日志、加载配置、创建交易客户端，启动异步主循环，
+    如遇异常则等待后重启程序。
+    """
+    global logger, client
+    while True:
+        try:
+            logger = setup_logging()
+            execute_config_file(get_config_file())
+            config = load_config()
+            client = setup_um_futures_client()
+            get_public_ip_and_latency()
+            asyncio.run(main())
+            logger.info(f"暂停11, {30}")
+            time.sleep(30)
+        except KeyboardInterrupt:
+            logger.info("检测到键盘中断。程序将在 60 秒后重新启动...")
+            time.sleep(60)
+            os.execv(sys.executable, ['python'] + sys.argv)
+        except Exception as e:
+            logger.error(f"程序运行中发生错误: {e}")
+            traceback.print_exc()
+            logger.debug(f"堆栈跟踪: {traceback.format_exc()}")
+            logger.info(f"暂停12, {30}")
+            time.sleep(30)
+            os.execv(sys.executable, ['python'] + sys.argv)
 
 
 if __name__ == "__main__":
-  run_main_loop()
+    run_main_loop()
