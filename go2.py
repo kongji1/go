@@ -1,5 +1,5 @@
 import time  # 用于时间相关操作 3435+duijian+对冲量改相对净持仓
-#quantity_grid_rate 待优化
+#20250205
 import requests  # 用于发送HTTP请求
 import os  # 用于执行操作系统相关任务
 import sys  # 用于访问与 Python 解释器交互的变量和函数
